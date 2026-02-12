@@ -1,26 +1,212 @@
 @import "tailwindcss";
 
+/* ============================================================
+   Rune — Library/Study Design System
+   Writing at a mahogany desk with a warm lamp.
+   Dark wood tones, leather textures, aged paper.
+   ============================================================ */
+
+/* ----------------------------------------------------------
+   Color Tokens
+   ---------------------------------------------------------- */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Library/Study Dark Mode (default) */
+  --rune-bg: #1a120e;
+  --rune-surface: #2a1f18;
+  --rune-elevated: #3a2e22;
+  --rune-border: #4a3d30;
+  --rune-muted: #7a6c58;
+  --rune-text: #d4c5b0;
+  --rune-heading: #ebe1d4;
+  --rune-gold: #c4a265;
+  --rune-teal: #4ecdc4;
+
+  /* Typography variables — set by next/font in layout.tsx */
+  --font-serif: var(--font-source-serif), Georgia, 'Times New Roman', serif;
+  --font-sans: var(--font-source-sans), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-ibm-plex-mono), 'Courier New', monospace;
 }
+
+.light {
+  --rune-bg: #f5efe6;
+  --rune-surface: #ede5d8;
+  --rune-elevated: #e2d9cc;
+  --rune-border: #d4c9ba;
+  --rune-muted: #8a7d6e;
+  --rune-text: #2a2018;
+  --rune-heading: #1e1810;
+  --rune-gold: #a88840;
+  --rune-teal: #3baa9e;
+}
+
+/* ----------------------------------------------------------
+   Tailwind v4 Theme Extensions
+   ---------------------------------------------------------- */
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-rune-bg: var(--rune-bg);
+  --color-rune-surface: var(--rune-surface);
+  --color-rune-elevated: var(--rune-elevated);
+  --color-rune-border: var(--rune-border);
+  --color-rune-muted: var(--rune-muted);
+  --color-rune-text: var(--rune-text);
+  --color-rune-heading: var(--rune-heading);
+  --color-rune-gold: var(--rune-gold);
+  --color-rune-teal: var(--rune-teal);
+
+  --font-serif: var(--font-source-serif), Georgia, 'Times New Roman', serif;
+  --font-sans: var(--font-source-sans), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-ibm-plex-mono), 'Courier New', monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ----------------------------------------------------------
+   Base Reset & Body
+   ---------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: var(--rune-bg);
+  color: var(--rune-text);
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  min-height: 100dvh;
+}
+
+/* ----------------------------------------------------------
+   Typography
+   ---------------------------------------------------------- */
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-serif);
+  color: var(--rune-heading);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--rune-gold);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+a:hover {
+  color: var(--rune-teal);
+}
+
+code, pre, kbd, samp {
+  font-family: var(--font-mono);
+}
+
+/* ----------------------------------------------------------
+   Selection & Cursor
+   ---------------------------------------------------------- */
+
+::selection {
+  background-color: color-mix(in srgb, var(--rune-gold) 30%, transparent);
+  color: var(--rune-heading);
+}
+
+/* ----------------------------------------------------------
+   Focus Ring — gold accent for accessibility
+   ---------------------------------------------------------- */
+
+:focus-visible {
+  outline: 2px solid var(--rune-gold);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ----------------------------------------------------------
+   Scrollbar — warm, subtle
+   ---------------------------------------------------------- */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--rune-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--rune-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--rune-muted);
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--rune-border) var(--rune-bg);
+}
+
+/* ----------------------------------------------------------
+   Utility Classes
+   ---------------------------------------------------------- */
+
+/* Text colors */
+.text-gold {
+  color: var(--rune-gold);
+}
+
+.text-teal {
+  color: var(--rune-teal);
+}
+
+.text-muted {
+  color: var(--rune-muted);
+}
+
+.text-heading {
+  color: var(--rune-heading);
+}
+
+/* Background colors */
+.bg-surface {
+  background-color: var(--rune-surface);
+}
+
+.bg-elevated {
+  background-color: var(--rune-elevated);
+}
+
+.bg-rune {
+  background-color: var(--rune-bg);
+}
+
+/* Border */
+.border-rune {
+  border-color: var(--rune-border);
+}
+
+/* Label style — mono, uppercase, tracking */
+.label-mono {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--rune-muted);
 }
