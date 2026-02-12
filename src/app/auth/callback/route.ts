@@ -32,6 +32,5 @@ export async function GET(request: Request) {
     }
   }
 
-  // Auth error — redirect to landing with error indicator
   return NextResponse.redirect(`${origin}/?auth=error`);
 }
