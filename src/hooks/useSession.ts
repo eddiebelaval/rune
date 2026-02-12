@@ -65,8 +65,8 @@ export function useSession(bookId: string, sessionId: string): UseSessionReturn 
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            bookId,
-            sessionId,
+            book_id: bookId,
+            session_id: sessionId,
             message: text,
           }),
         });
