@@ -1,13 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase-browser';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 export default function AuthPage() {
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
-  const supabase = createClient();
+  const clientRef = useRef<SupabaseClient | null>(null);
+
+  function getClient() {
+    if (!clientRef.current) clientRef.current = createClient();
+    return clientRef.current;
+  }
 
   async function handleMagicLink(e: React.FormEvent) {
     e.preventDefault();
@@ -16,7 +22,7 @@ export default function AuthPage() {
     setStatus('sending');
     setErrorMsg('');
 
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error } = await getClient().auth.signInWithOtp({
       email: email.trim(),
       options: {
         emailRedirectTo: `${window.location.origin}/auth/callback`,
@@ -32,7 +38,7 @@ export default function AuthPage() {
   }
 
   async function handleGoogle() {
-    const { error } = await supabase.auth.signInWithOAuth({
+    const { error } = await getClient().auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
