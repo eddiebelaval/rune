@@ -87,3 +87,14 @@ export interface TimelineEvent {
   chapter_reference: string | null;
   created_at: string;
 }
+
+export interface Revision {
+  id: string;
+  book_id: string;
+  workspace_file_id: string;
+  session_id: string | null;
+  content_before: string;
+  content_after: string;
+  revision_note: string | null;
+  created_at: string;
+}
