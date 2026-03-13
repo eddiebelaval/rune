@@ -180,7 +180,7 @@ export default function NewBookForm() {
         <div
           className="mb-4 rounded-lg border px-4 py-3 text-sm"
           style={{
-            backgroundColor: 'rgba(196, 162, 101, 0.1)',
+            backgroundColor: 'color-mix(in srgb, var(--rune-gold) 10%, transparent)',
             borderColor: 'var(--rune-gold)',
             color: 'var(--rune-gold)',
           }}

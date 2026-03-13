@@ -8,34 +8,42 @@ Voice-first conversational book writer. An AI ghost writer that helps anyone wri
 - **Supabase** -- Postgres + Realtime subscriptions + Storage
 - **Claude API** -- Multi-model: Opus (writer), Sonnet (editor), Haiku (clerk)
 - **Deepgram** -- WebSocket streaming speech-to-text
-- **Tailwind CSS v4** -- Library/Study design system tokens
+- **Tailwind CSS v4** -- Claude-Inspired design system tokens
 - **Docker** -- Self-host option
 - **Vercel** -- Deployment
 
-## Design System: Library/Study
+## Design System: Claude-Inspired
 
 ### Philosophy
-Writing at a mahogany desk with a warm lamp. Dark wood tones, leather textures, aged paper. Warm and intimate, never clinical. The UI should feel like a study, not a software tool.
+Warm cream surfaces, coral accents, clean white cards. Light-mode default with optional dark mode via `.dark` class. Source Serif 4 headings for writing-tool identity. Background texture (dot-grid + radial vignette) for subtle depth.
 
-### Colors -- Dark Mode (Default)
+### Colors -- Light Mode (Default)
 | Token | Value | Usage |
 |-------|-------|-------|
-| `--rune-bg` | `#1a120e` | Page background (deep mahogany) |
-| `--rune-surface` | `#2a1f18` | Card surfaces (warm leather) |
-| `--rune-elevated` | `#3a2e22` | Hover states, raised surfaces |
-| `--rune-border` | `#4a3d30` | Borders, dividers |
-| `--rune-muted` | `#7a6c58` | Muted text, placeholders |
-| `--rune-text` | `#d4c5b0` | Body text (aged paper) |
-| `--rune-heading` | `#ebe1d4` | Headings, primary text |
-| `--rune-gold` | `#c4a265` | Primary accent (lamp gold) |
-| `--rune-teal` | `#4ecdc4` | Secondary accent (ink teal) |
+| `--rune-bg` | `#faf9f5` | Page background (warm cream) |
+| `--rune-surface` | `#ffffff` | Card surfaces (clean white) |
+| `--rune-elevated` | `#f5f4ef` | Hover states, raised surfaces |
+| `--rune-border` | `#e5e4df` | Borders, dividers |
+| `--rune-muted` | `#73726c` | Muted text, placeholders |
+| `--rune-text` | `#3d3d3a` | Body text |
+| `--rune-heading` | `#141413` | Headings, primary text |
+| `--rune-gold` | `#d97757` | Primary accent (Claude coral) |
+| `--rune-teal` | `#2c84db` | Secondary accent (Claude blue) |
+| `--rune-error` | `#dc3545` | Error states (accessible red) |
 
-### Colors -- Light Mode
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--rune-bg` | `#f5efe6` | Page background (warm parchment) |
-| `--rune-text` | `#1e1810` | Primary text (dark ink) |
-| Accents deepened 15% for WCAG contrast |
+### Colors -- Dark Mode (opt-in via `.dark` class)
+| Token | Value |
+|-------|-------|
+| `--rune-bg` | `#1a1918` |
+| `--rune-surface` | `#252422` |
+| `--rune-elevated` | `#302e2b` |
+| `--rune-border` | `#3d3c38` |
+| `--rune-muted` | `#8c8b87` |
+| `--rune-text` | `#ccccc6` |
+| `--rune-heading` | `#eeeeec` |
+| `--rune-gold` | `#e08b6d` |
+| `--rune-teal` | `#5a9fe6` |
+| `--rune-error` | `#e25563` |
 
 ### Typography
 - **Headings:** Source Serif 4 -- weight 400, letter-spacing: -0.02em
@@ -44,11 +52,19 @@ Writing at a mahogany desk with a warm lamp. Dark wood tones, leather textures, 
 - All loaded via `next/font/google`
 
 ### Rules
-- Warm tones only. NO cool blues or clinical whites.
-- Gold accent (`#c4a265`) for interactive elements, user actions.
-- Teal accent (`#4ecdc4`) for AI/system elements, Rune activity.
+- NEVER hardcode hex colors -- always use `var(--rune-*)` tokens.
+- Coral accent (`--rune-gold`) for interactive elements, user actions.
+- Blue accent (`--rune-teal`) for AI/system elements, Rune activity.
+- Use `var(--rune-error)` for error states, not hardcoded reds.
+- For alpha variants, use `color-mix(in srgb, var(--rune-gold) 20%, transparent)`.
 - Organic rounded corners on interactive elements.
 - Gradients are informational (progress, status), never decorative.
+
+### App Shell
+- `AppHeader` -- fixed top bar with Rune wordmark, Library link, profile dropdown
+- `AppFooter` -- shown on landing, auth, new-book pages; NOT on book workspace
+- `SessionSidebar` -- collapsible session list on book workspace (left side)
+- `BookWorkspace` -- client component wiring sidebar + session view
 
 ## Architecture
 
@@ -57,7 +73,7 @@ src/
   app/
     page.tsx                         # Landing / book selection
     layout.tsx                       # Root layout, fonts, auth
-    globals.css                      # Library/Study design tokens
+    globals.css                      # Claude-Inspired design tokens
     book/[id]/page.tsx               # Main session view
     api/
       books/route.ts                 # Create/list books
@@ -69,7 +85,11 @@ src/
       manuscript/route.ts            # Chapter assembly
       deepgram-token/route.ts        # Secure Deepgram key exchange
   components/
-    SessionView.tsx                  # Chat + workspace view
+    AppHeader.tsx                    # Top bar: logo, nav, profile
+    AppFooter.tsx                    # Site footer with attribution
+    BookWorkspace.tsx                # Client wrapper: sidebar + session
+    SessionSidebar.tsx               # Collapsible session list
+    SessionView.tsx                  # Chat + activity view (65/35)
     MessageArea.tsx                  # Conversation messages
     VoiceInput.tsx                   # Deepgram mic capture
     ActivityStream.tsx               # Real-time Rune activity

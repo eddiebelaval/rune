@@ -17,12 +17,12 @@ interface PositionedEntity extends KnowledgeEntity {
   y: number;
 }
 
-// Entity type -> circle fill color (using CSS custom property values directly)
+// Entity type -> circle fill color (CSS custom properties)
 const ENTITY_COLORS: Record<EntityType, string> = {
-  person: '#c4a265',   // rune-gold
-  place: '#4ecdc4',    // rune-teal
-  theme: '#7a6c58',    // rune-muted
-  event: '#ebe1d4',    // rune-heading (near-white)
+  person: 'var(--rune-gold)',
+  place: 'var(--rune-teal)',
+  theme: 'var(--rune-muted)',
+  event: 'var(--rune-heading)',
 };
 
 const ENTITY_LABELS: Record<EntityType, string> = {
@@ -275,7 +275,7 @@ export default function KnowledgeGraph({ bookId }: KnowledgeGraphProps) {
                 y1={from.y}
                 x2={to.x}
                 y2={to.y}
-                stroke={isHighlighted ? '#c4a265' : '#4a3d30'}
+                stroke={isHighlighted ? 'var(--rune-gold)' : 'var(--rune-border)'}
                 strokeWidth={isHighlighted ? 2 : 1}
                 strokeOpacity={selectedId && !isHighlighted ? 0.2 : 0.6}
               />
@@ -308,7 +308,7 @@ export default function KnowledgeGraph({ bookId }: KnowledgeGraphProps) {
                   r={NODE_RADIUS}
                   fill={ENTITY_COLORS[entity.entity_type]}
                   fillOpacity={0.85}
-                  stroke={isSelected ? '#ebe1d4' : 'transparent'}
+                  stroke={isSelected ? 'var(--rune-heading)' : 'transparent'}
                   strokeWidth={isSelected ? 2.5 : 0}
                 />
 
@@ -319,7 +319,7 @@ export default function KnowledgeGraph({ bookId }: KnowledgeGraphProps) {
                       cx={entity.x + NODE_RADIUS * 0.7}
                       cy={entity.y - NODE_RADIUS * 0.7}
                       r={8}
-                      fill="#2a1f18"
+                      fill="var(--rune-surface)"
                       stroke={ENTITY_COLORS[entity.entity_type]}
                       strokeWidth={1}
                     />
@@ -329,7 +329,7 @@ export default function KnowledgeGraph({ bookId }: KnowledgeGraphProps) {
                       textAnchor="middle"
                       dominantBaseline="central"
                       fontSize="9"
-                      fill="#d4c5b0"
+                      fill="var(--rune-text)"
                       fontFamily="var(--font-mono)"
                     >
                       {entity.mention_count}
@@ -343,7 +343,7 @@ export default function KnowledgeGraph({ bookId }: KnowledgeGraphProps) {
                   y={entity.y + NODE_RADIUS + 14}
                   textAnchor="middle"
                   fontSize="11"
-                  fill="#d4c5b0"
+                  fill="var(--rune-text)"
                   fontFamily="var(--font-sans)"
                 >
                   {entity.name.length > 16

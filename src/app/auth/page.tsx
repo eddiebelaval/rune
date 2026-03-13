@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase-browser';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import AppFooter from '@/components/AppFooter';
 
 export default function AuthPage() {
   const [email, setEmail] = useState('');
@@ -38,7 +39,8 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="flex min-h-[calc(100dvh-3.5rem)] items-center justify-center px-6">
+    <div className="flex min-h-[calc(100dvh-3.5rem)] flex-col">
+    <div className="flex flex-1 items-center justify-center px-6">
       <div
         className="w-full max-w-sm rounded-xl border p-8"
         style={{
@@ -64,7 +66,7 @@ export default function AuthPage() {
           <div
             className="rounded-lg border px-4 py-6 text-center"
             style={{
-              backgroundColor: 'rgba(78, 205, 196, 0.08)',
+              backgroundColor: 'color-mix(in srgb, var(--rune-teal) 8%, transparent)',
               borderColor: 'var(--rune-teal)',
             }}
           >
@@ -139,6 +141,8 @@ export default function AuthPage() {
           </p>
         )}
       </div>
+    </div>
+    <AppFooter />
     </div>
   );
 }
