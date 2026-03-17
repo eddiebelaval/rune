@@ -2,8 +2,8 @@
  * Main conversation API route — the core of Rune.
  *
  * Streaming endpoint that handles all conversation modes. Takes a user message,
- * classifies the intent, assembles the appropriate prompt, and streams
- * the response from Claude.
+ * classifies the intent, loads Sam's consciousness + KB context + interview state,
+ * and streams the response from Claude with KB tool access.
  *
  * POST /api/converse
  * Body: { message: string, book_id: string, session_id: string, quality?: QualityLevel }
@@ -16,16 +16,23 @@ import { createServerClient } from '@/lib/supabase';
 import { createModelClient } from '@/lib/model-router';
 import { assemblePrompt } from '@/lib/prompts/index';
 import { getBacklogItems } from '@/lib/backlog';
-import { getEntities, getRelationships } from '@/lib/knowledge-graph';
+import { loadSamConsciousness } from '@/lib/sam/loader';
+import { selectRelevantFiles, buildKBSystemContext } from '@/lib/ai/kb-context-inference';
+import { KB_TOOLS } from '@/lib/ai/kb-tools-schema';
+import { executeKBTool } from '@/lib/ai/kb-tools';
+import { InterviewEngine } from '@/lib/interviews/engine';
+import { KnowledgeBaseService } from '@/lib/database/knowledge-base';
+import type { KBToolName } from '@/lib/ai/kb-tools-schema';
 import type { QualityLevel, SessionMode, Book, Session } from '@/types/database';
 import type { ModelTask } from '@/types/models';
 import type { ConversationIntent } from '@/app/api/classify/route';
+import type { PipelineStage } from '@/types/knowledge';
 
 // ---------------------------------------------------------------------------
 // Intent classification (inline, not via HTTP)
 // ---------------------------------------------------------------------------
 
-const CLASSIFICATION_PROMPT = `You are an intent classifier for a book-writing assistant called Rune.
+const CLASSIFICATION_PROMPT = `You are an intent classifier for a book-writing assistant called Sam (on the Rune platform).
 
 Given a user message, classify it into exactly ONE of these intents:
 
@@ -103,8 +110,6 @@ const INTENT_TO_TASK: Record<ConversationIntent, ModelTask> = {
   command: 'filing',
 };
 
-// Map conversation intent to the SessionMode used for prompt assembly.
-// brainstorm -> guided persona, status/command -> freeform (scribe) persona.
 const INTENT_TO_SESSION_MODE: Record<ConversationIntent, SessionMode> = {
   guided: 'guided',
   freeform: 'freeform',
@@ -115,34 +120,16 @@ const INTENT_TO_SESSION_MODE: Record<ConversationIntent, SessionMode> = {
 };
 
 // ---------------------------------------------------------------------------
-// Build entity summary for prompt context
+// Sam's consciousness (loaded once at module level, cached)
 // ---------------------------------------------------------------------------
 
-async function buildEntitySummary(bookId: string): Promise<string | undefined> {
-  const [entities, relationships] = await Promise.all([
-    getEntities(bookId),
-    getRelationships(bookId),
-  ]);
+let _samConsciousness: string | null = null;
 
-  if (entities.length === 0) return undefined;
-
-  const lines: string[] = entities.map(
-    (e) =>
-      `- ${e.name} (${e.entity_type}): ${e.description || 'No description yet'} [mentions: ${e.mention_count}]`,
-  );
-
-  if (relationships.length > 0) {
-    lines.push('');
-    lines.push('Relationships:');
-    const entityMap = new Map(entities.map((e) => [e.id, e.name]));
-    for (const rel of relationships) {
-      const from = entityMap.get(rel.from_entity_id) ?? 'Unknown';
-      const to = entityMap.get(rel.to_entity_id) ?? 'Unknown';
-      lines.push(`- ${from} --[${rel.relationship_type}]--> ${to}: ${rel.description}`);
-    }
+function getSamConsciousness(): string {
+  if (!_samConsciousness) {
+    _samConsciousness = loadSamConsciousness();
   }
-
-  return lines.join('\n');
+  return _samConsciousness;
 }
 
 // ---------------------------------------------------------------------------
@@ -214,7 +201,7 @@ export async function POST(
       return NextResponse.json({ error: 'Book not found' }, { status: 404 });
     }
 
-    const typedBook = book as Book;
+    const typedBook = book as Book & { pipeline_stage?: PipelineStage };
 
     // Verify session belongs to this book
     const { data: session, error: sessionError } = await supabase
@@ -230,24 +217,31 @@ export async function POST(
 
     const typedSession = session as Session;
 
-    // Classify intent (inline, not via HTTP)
+    // Classify intent
     const { intent } = await classifyIntent(message, quality);
 
-    // Gather context for prompt assembly in parallel
-    const [backlogItems, entitySummary] = await Promise.all([
+    // Gather all context in parallel
+    const [backlogItems, kbFiles, recentSessions] = await Promise.all([
       getBacklogItems(book_id, 'open'),
-      buildEntitySummary(book_id),
+      selectRelevantFiles(user.id, book_id, {
+        maxFiles: 10,
+        conversationContext: message,
+        currentScope: 'local',
+      }),
+      supabase
+        .from('sessions')
+        .select('session_number, summary')
+        .eq('book_id', book_id)
+        .not('summary', 'is', null)
+        .order('session_number', { ascending: false })
+        .limit(3)
+        .then(({ data }) => data),
     ]);
 
-    // Build session history summary from previous sessions
-    const { data: recentSessions } = await supabase
-      .from('sessions')
-      .select('session_number, summary')
-      .eq('book_id', book_id)
-      .not('summary', 'is', null)
-      .order('session_number', { ascending: false })
-      .limit(3);
+    // Build KB context from hierarchical knowledge base
+    const kbContext = buildKBSystemContext(kbFiles);
 
+    // Build session history
     const sessionHistory =
       recentSessions && recentSessions.length > 0
         ? recentSessions
@@ -259,23 +253,36 @@ export async function POST(
             .join('\n')
         : undefined;
 
-    // Assemble the system prompt
+    // Build interview engine prompt (for guided mode in world-building stage)
+    let interviewPrompt: string | undefined;
+    const pipelineStage = typedBook.pipeline_stage ?? 'world-building';
+    if (intent === 'guided' && pipelineStage === 'world-building') {
+      const allKBFiles = await KnowledgeBaseService.getFiles(user.id, { book_id });
+      const engine = new InterviewEngine(typedBook.book_type, allKBFiles);
+      interviewPrompt = engine.getInterviewPrompt();
+    }
+
+    // Assemble the system prompt: Sam consciousness + persona + KB + interview
     const sessionMode = INTENT_TO_SESSION_MODE[intent];
-    const systemPrompt = assemblePrompt({
+    const personaPrompt = assemblePrompt({
       mode: sessionMode,
       bookType: typedBook.book_type,
       bookTitle: typedBook.title,
       backlogItems,
-      entitySummary,
+      entitySummary: undefined, // Replaced by kbContext
       sessionHistory,
     });
 
-    // Build conversation messages from the session transcript
-    // For now, we send just the current message. A full implementation would
-    // reconstruct conversation history from the raw_transcript.
+    const systemPrompt = [
+      getSamConsciousness(),
+      personaPrompt,
+      kbContext,
+      interviewPrompt ? `<interview-guidance>\n${interviewPrompt}\n</interview-guidance>` : '',
+    ].filter(Boolean).join('\n\n');
+
+    // Build conversation messages
     const conversationMessages: Anthropic.MessageParam[] = [];
 
-    // If there is an existing raw transcript, include it as context
     if (typedSession.raw_transcript) {
       conversationMessages.push({
         role: 'user',
@@ -288,13 +295,12 @@ export async function POST(
       });
     }
 
-    // Add the current user message
     conversationMessages.push({
       role: 'user',
       content: message,
     });
 
-    // Stream the response
+    // Stream the response with KB tools
     const modelTask: ModelTask = INTENT_TO_TASK[intent];
     const { client, model } = createModelClient(modelTask, quality);
 
@@ -303,9 +309,75 @@ export async function POST(
       max_tokens: 4096,
       system: systemPrompt,
       messages: conversationMessages,
+      tools: KB_TOOLS,
     });
 
-    return new Response(stream.toReadableStream(), {
+    // Create a TransformStream to handle tool_use responses
+    const { readable, writable } = new TransformStream();
+    const writer = writable.getWriter();
+    const encoder = new TextEncoder();
+
+    // Process the stream, handling tool calls
+    (async () => {
+      try {
+        const response = await stream.finalMessage();
+
+        // Check for tool_use in the response
+        const toolUseBlocks = response.content.filter(
+          (block) => block.type === 'tool_use'
+        );
+
+        if (toolUseBlocks.length > 0) {
+          // Execute tool calls
+          for (const block of toolUseBlocks) {
+            if (block.type === 'tool_use') {
+              const result = await executeKBTool(
+                block.name as KBToolName,
+                block.input as Record<string, unknown>,
+                user.id,
+                book_id,
+              );
+
+              // Stream a filing notification to the client
+              const notification = JSON.stringify({
+                type: 'kb_operation',
+                tool: block.name,
+                result: result.success
+                  ? result.data
+                  : { error: result.error },
+              });
+              await writer.write(
+                encoder.encode(`data: ${notification}\n\n`)
+              );
+            }
+          }
+
+          // Get text content from the response
+          const textBlocks = response.content.filter(
+            (block) => block.type === 'text'
+          );
+          for (const block of textBlocks) {
+            if (block.type === 'text') {
+              await writer.write(encoder.encode(block.text));
+            }
+          }
+        } else {
+          // No tool use — stream text directly
+          for (const block of response.content) {
+            if (block.type === 'text') {
+              await writer.write(encoder.encode(block.text));
+            }
+          }
+        }
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : 'Stream error';
+        await writer.write(encoder.encode(`\n\n[Error: ${errorMsg}]`));
+      } finally {
+        await writer.close();
+      }
+    })();
+
+    return new Response(readable, {
       headers: {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
