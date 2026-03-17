@@ -5,6 +5,7 @@ import { KnowledgeBaseService } from '../database/knowledge-base'
 import { inferFolderAndScope } from '../../types/folder-system'
 import type { KnowledgeFileType } from '../../types/knowledge'
 import type { KBToolName } from './kb-tools-schema'
+import { countWords } from '../text-utils'
 
 export interface ToolCallResult {
   success: boolean
@@ -127,7 +128,7 @@ async function handleSearchKB(
       file_type: f.file_type,
       scope: f.scope,
       preview: f.content.substring(0, 200),
-      word_count: f.content.split(/\s+/).filter(Boolean).length,
+      word_count: (f.metadata?.word_count ?? countWords(f.content)),
     }))
 
     return {
@@ -183,7 +184,7 @@ async function handleListFiles(
       scope: f.scope,
       folder_type: f.folder_type,
       is_active: f.is_active,
-      word_count: f.content.split(/\s+/).filter(Boolean).length,
+      word_count: (f.metadata?.word_count ?? countWords(f.content)),
       version: f.current_semantic_version,
     }))
 

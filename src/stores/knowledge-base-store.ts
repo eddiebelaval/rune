@@ -3,6 +3,7 @@
 
 import { create } from 'zustand'
 import { createClient } from '../lib/supabase-browser'
+import { getScopeHierarchy } from '../lib/text-utils'
 import type {
   KnowledgeFile,
   KnowledgeScope,
@@ -106,13 +107,8 @@ export const useKBStore = create<KBStoreState & KBStoreActions>((set, get) => ({
   },
 
   getByScope: (scope: KnowledgeScope) => {
-    const scopeFilter = scope === 'global'
-      ? ['global']
-      : scope === 'regional'
-        ? ['global', 'regional']
-        : ['global', 'regional', 'local']
-
-    return get().files.filter((f) => scopeFilter.includes(f.scope))
+    const scopeFilter = getScopeHierarchy(scope)
+    return get().files.filter((f) => (scopeFilter as string[]).includes(f.scope))
   },
 
   getByType: (fileType: KnowledgeFileType) => {

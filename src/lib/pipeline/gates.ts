@@ -2,6 +2,7 @@
 // Gates suggest readiness, they don't block. Rune guides, not enforces.
 
 import type { KnowledgeFile, PipelineStage, KnowledgeFileType } from '../../types/knowledge'
+import { countWords } from '../text-utils'
 
 export interface GateResult {
   passed: boolean
@@ -42,7 +43,7 @@ function checkWorldBuildingGate(kbFiles: KnowledgeFile[]): GateResult {
 
   // Required: at least 1 character with meaningful content
   const characters = foundationFiles.filter((f) => f.file_type === 'characters')
-  const meaningfulCharacters = characters.filter((f) => f.content.split(/\s+/).length > 20)
+  const meaningfulCharacters = characters.filter((f) => countWords(f.content) > 20)
   if (meaningfulCharacters.length === 0) {
     blockers.push('No characters described yet')
   }
@@ -114,7 +115,7 @@ function checkStoryWritingGate(kbFiles: KnowledgeFile[]): GateResult {
 
   // Required: at least one draft with meaningful content
   const meaningfulDrafts = draftFiles.filter(
-    (f) => f.file_type === 'drafts' && f.content.split(/\s+/).length > 100
+    (f) => f.file_type === 'drafts' && countWords(f.content) > 100
   )
   if (meaningfulDrafts.length === 0) {
     blockers.push('No chapter drafts written yet')

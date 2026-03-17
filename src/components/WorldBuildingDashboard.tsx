@@ -1,7 +1,6 @@
 'use client'
 
 import { useMemo } from 'react'
-import { FOUNDATION_FILES } from '../types/folder-system'
 import type { KnowledgeFile, KnowledgeFileType } from '../types/knowledge'
 
 interface WorldBuildingDashboardProps {
@@ -34,24 +33,26 @@ export default function WorldBuildingDashboard({
   onAdvanceStage,
 }: WorldBuildingDashboardProps) {
   const layers = useMemo((): LayerStatus[] => {
-    const foundationTypes: { title: string; fileType: KnowledgeFileType; description: string }[] = [
-      { title: 'World Bible', fileType: 'world-building', description: 'Core premise, rules, tone, atmosphere' },
+    const foundationTypes: { title: string; fileType: KnowledgeFileType; titleMatch?: string; description: string }[] = [
+      { title: 'World Bible', fileType: 'world-building', titleMatch: 'world bible', description: 'Core premise, rules, tone, atmosphere' },
       { title: 'Characters', fileType: 'characters', description: 'People who inhabit your world' },
-      { title: 'Settings & Locations', fileType: 'world-building', description: 'Where your story takes place' },
+      { title: 'Settings & Locations', fileType: 'world-building', titleMatch: 'setting', description: 'Where your story takes place' },
       { title: 'Lore & Rules', fileType: 'lore', description: 'Systems, magic, technology, norms' },
       { title: 'Relationships', fileType: 'relationships-map', description: 'How characters connect' },
       { title: 'Timeline', fileType: 'timeline', description: 'When things happen' },
     ]
 
     return foundationTypes.map((layer) => {
-      const files = kbFiles.filter((f) => f.file_type === layer.fileType)
+      const files = layer.titleMatch
+        ? kbFiles.filter((f) => f.file_type === layer.fileType && f.title.toLowerCase().includes(layer.titleMatch!))
+        : kbFiles.filter((f) => f.file_type === layer.fileType)
       const totalWords = files.reduce(
-        (sum, f) => sum + f.content.split(/\s+/).filter(Boolean).length,
+        (sum, f) => sum + (f.metadata?.word_count ?? 0),
         0
       )
-      const lastFile = files.sort(
-        (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-      )[0]
+      const lastFile = files.length > 0
+        ? files.reduce((latest, f) => f.updated_at > latest.updated_at ? f : latest)
+        : undefined
 
       return {
         ...layer,
