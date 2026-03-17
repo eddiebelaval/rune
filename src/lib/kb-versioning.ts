@@ -1,6 +1,8 @@
 // KB Version Tracking
 // Determines version type (major/minor/patch) and manages semantic versions
 
+import { countWords } from './text-utils'
+
 export type VersionBumpType = 'major' | 'minor' | 'patch'
 
 /**
@@ -12,10 +14,10 @@ export function determineVersionType(
 ): VersionBumpType {
   if (!oldContent || oldContent.trim().length === 0) return 'major'
 
-  const oldWords = oldContent.split(/\s+/).filter(Boolean)
-  const newWords = newContent.split(/\s+/).filter(Boolean)
+  const oldLen = countWords(oldContent)
+  const newLen = countWords(newContent)
 
-  const lengthRatio = Math.abs(newWords.length - oldWords.length) / Math.max(oldWords.length, 1)
+  const lengthRatio = Math.abs(newLen - oldLen) / Math.max(oldLen, 1)
 
   // >50% content change = major
   if (lengthRatio > 0.5) return 'major'
@@ -56,8 +58,8 @@ export function generateChangeSummary(
   oldContent: string,
   newContent: string
 ): string {
-  const oldLen = oldContent.split(/\s+/).filter(Boolean).length
-  const newLen = newContent.split(/\s+/).filter(Boolean).length
+  const oldLen = countWords(oldContent)
+  const newLen = countWords(newContent)
   const diff = newLen - oldLen
 
   if (diff > 0) return `Added ~${diff} words`

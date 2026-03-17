@@ -3,13 +3,26 @@
 
 import { createServiceClient } from '../supabase'
 import { inferFolderAndScope } from '../../types/folder-system'
+import { countWords, getScopeHierarchy } from '../text-utils'
 import type {
   KnowledgeFile,
+  KnowledgeScope,
   CreateKBFileInput,
   UpdateKBFileInput,
   KBFileFilters,
   KBFileVersion,
 } from '../../types/knowledge'
+
+// Singleton service client — stateless, no session, safe to reuse
+const db = createServiceClient()
+
+/**
+ * Sanitize search input to prevent PostgREST filter injection.
+ * Strips characters that have meaning in PostgREST filter syntax.
+ */
+function sanitizeSearchQuery(query: string): string {
+  return query.replace(/[,().'"%\\]/g, '').trim()
+}
 
 export class KnowledgeBaseService {
   /**
@@ -19,12 +32,9 @@ export class KnowledgeBaseService {
     userId: string,
     input: CreateKBFileInput
   ): Promise<KnowledgeFile> {
-    const supabase = createServiceClient()
     const inferred = inferFolderAndScope(input.file_type)
 
-    const wordCount = input.content.split(/\s+/).filter(Boolean).length
-
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('knowledge_files')
       .insert({
         user_id: userId,
@@ -38,7 +48,7 @@ export class KnowledgeBaseService {
         tags: input.tags ?? [],
         is_active: input.is_active ?? false,
         source_type: input.source_type ?? 'voice-transcription',
-        metadata: { word_count: wordCount, ...input.metadata },
+        metadata: { word_count: countWords(input.content), ...input.metadata },
         current_version: 1,
         current_semantic_version: '1.0.0',
       })
@@ -56,9 +66,7 @@ export class KnowledgeBaseService {
     userId: string,
     filters: KBFileFilters = {}
   ): Promise<KnowledgeFile[]> {
-    const supabase = createServiceClient()
-
-    let query = supabase
+    let query = db
       .from('knowledge_files')
       .select('*')
       .eq('user_id', userId)
@@ -82,9 +90,12 @@ export class KnowledgeBaseService {
       query = query.eq('is_active', true)
     }
     if (filters.search_query) {
-      query = query.or(
-        `title.ilike.%${filters.search_query}%,content.ilike.%${filters.search_query}%`
-      )
+      const safe = sanitizeSearchQuery(filters.search_query)
+      if (safe.length > 0) {
+        query = query.or(
+          `title.ilike.%${safe}%,content.ilike.%${safe}%`
+        )
+      }
     }
 
     const { data, error } = await query.order('updated_at', { ascending: false })
@@ -97,9 +108,7 @@ export class KnowledgeBaseService {
    * Get a single KB file by ID
    */
   static async getFile(id: string): Promise<KnowledgeFile | null> {
-    const supabase = createServiceClient()
-
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('knowledge_files')
       .select('*')
       .eq('id', id)
@@ -111,31 +120,37 @@ export class KnowledgeBaseService {
   }
 
   /**
-   * Update a KB file (partial update)
+   * Update a KB file (partial update, merges metadata)
    */
   static async updateFile(
     id: string,
     updates: UpdateKBFileInput
   ): Promise<KnowledgeFile> {
-    const supabase = createServiceClient()
+    // Fetch existing to merge metadata (Supabase replaces entire jsonb column)
+    const existing = updates.content !== undefined || updates.metadata !== undefined
+      ? await this.getFile(id)
+      : null
 
     const updateData: Record<string, unknown> = {}
     if (updates.title !== undefined) updateData.title = updates.title
     if (updates.content !== undefined) {
       updateData.content = updates.content
       updateData.metadata = {
-        word_count: updates.content.split(/\s+/).filter(Boolean).length,
+        ...(existing?.metadata ?? {}),
+        word_count: countWords(updates.content),
+        ...updates.metadata,
+      }
+    } else if (updates.metadata !== undefined) {
+      updateData.metadata = {
+        ...(existing?.metadata ?? {}),
         ...updates.metadata,
       }
     }
     if (updates.tags !== undefined) updateData.tags = updates.tags
     if (updates.is_active !== undefined) updateData.is_active = updates.is_active
     if (updates.scope !== undefined) updateData.scope = updates.scope
-    if (updates.metadata !== undefined && !updates.content) {
-      updateData.metadata = updates.metadata
-    }
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('knowledge_files')
       .update(updateData)
       .eq('id', id)
@@ -150,9 +165,7 @@ export class KnowledgeBaseService {
    * Soft delete a KB file
    */
   static async deleteFile(id: string): Promise<void> {
-    const supabase = createServiceClient()
-
-    const { error } = await supabase
+    const { error } = await db
       .from('knowledge_files')
       .update({ deleted: true, deleted_at: new Date().toISOString() })
       .eq('id', id)
@@ -161,15 +174,15 @@ export class KnowledgeBaseService {
   }
 
   /**
-   * Toggle is_active on a KB file
+   * Set is_active on a KB file (single UPDATE, no read needed)
    */
-  static async toggleActive(id: string): Promise<boolean> {
-    const file = await this.getFile(id)
-    if (!file) throw new Error('KB file not found')
+  static async setActive(id: string, isActive: boolean): Promise<void> {
+    const { error } = await db
+      .from('knowledge_files')
+      .update({ is_active: isActive })
+      .eq('id', id)
 
-    const newActive = !file.is_active
-    await this.updateFile(id, { is_active: newActive })
-    return newActive
+    if (error) throw new Error(`Failed to set active: ${error.message}`)
   }
 
   /**
@@ -178,18 +191,12 @@ export class KnowledgeBaseService {
   static async getFilesByScope(
     userId: string,
     bookId: string,
-    scope: string,
+    scope: KnowledgeScope,
     activeOnly = false
   ): Promise<KnowledgeFile[]> {
-    const supabase = createServiceClient()
+    const scopeFilter = getScopeHierarchy(scope)
 
-    const scopeFilter = scope === 'global'
-      ? ['global']
-      : scope === 'regional'
-        ? ['global', 'regional']
-        : ['global', 'regional', 'local']
-
-    let query = supabase
+    let query = db
       .from('knowledge_files')
       .select('*')
       .eq('user_id', userId)
@@ -224,9 +231,7 @@ export class KnowledgeBaseService {
     fileId: string,
     limit = 50
   ): Promise<KBFileVersion[]> {
-    const supabase = createServiceClient()
-
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('knowledge_file_versions')
       .select('*')
       .eq('knowledge_file_id', fileId)

@@ -2,7 +2,8 @@
 // Applies scope inheritance, relevance scoring, and context window limits
 
 import { KnowledgeBaseService } from '../database/knowledge-base'
-import type { KnowledgeFile, KBContextSnapshot, KBFileReference } from '../../types/knowledge'
+import { countWords } from '../text-utils'
+import type { KnowledgeFile, KnowledgeScope, KBContextSnapshot, KBFileReference } from '../../types/knowledge'
 
 const APPROX_CHARS_PER_TOKEN = 4
 const MAX_CONTEXT_TOKENS = 30_000
@@ -25,7 +26,7 @@ export async function selectRelevantFiles(
   } = {}
 ): Promise<KnowledgeFile[]> {
   const maxFiles = options.maxFiles ?? 10
-  const scope = options.currentScope ?? 'local'
+  const scope = (options.currentScope ?? 'local') as KnowledgeScope
 
   const allFiles = await KnowledgeBaseService.getFilesByScope(userId, bookId, scope)
 
@@ -37,19 +38,14 @@ export async function selectRelevantFiles(
     score: calculateRelevanceScore(file, options.conversationContext),
   }))
 
-  // Sort by score descending
+  // Sort by score descending (active files already boosted +50 in scoring)
   scored.sort((a, b) => b.score - a.score)
-
-  // Apply active-first preference
-  const activeFiles = scored.filter((s) => s.file.is_active)
-  const inactiveFiles = scored.filter((s) => !s.file.is_active)
-  const ordered = [...activeFiles, ...inactiveFiles]
 
   // Token-budget aware selection
   let tokenBudget = MAX_CONTEXT_TOKENS
   const selected: KnowledgeFile[] = []
 
-  for (const { file } of ordered) {
+  for (const { file } of scored) {
     if (selected.length >= maxFiles) break
 
     const fileTokens = estimateTokens(file.content)
@@ -85,7 +81,7 @@ function calculateRelevanceScore(
   else if (hoursSinceUpdate < 168) score += 10
 
   // Content richness (more content = more useful context)
-  const wordCount = file.content.split(/\s+/).filter(Boolean).length
+  const wordCount = (file.metadata?.word_count ?? countWords(file.content))
   if (wordCount > 200) score += 15
   else if (wordCount > 50) score += 5
 
@@ -156,7 +152,7 @@ export function createContextSnapshot(files: KnowledgeFile[]): KBContextSnapshot
       file_type: f.file_type,
       title: f.title,
       scope: f.scope,
-      word_count: f.content.split(/\s+/).filter(Boolean).length,
+      word_count: (f.metadata?.word_count ?? countWords(f.content)),
     })),
     total_kb_files: files.length,
     used_kb_files: files.filter((f) => f.is_active).length,

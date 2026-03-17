@@ -72,7 +72,7 @@ export default function KBOperationCard({
     }, 1000)
 
     return () => clearInterval(timer)
-  }, [dismissed, handleApprove])
+  }, [dismissed, handleApprove, autoApproveSeconds])
 
   const opColor = operationType === 'create'
     ? 'var(--rune-gold)'

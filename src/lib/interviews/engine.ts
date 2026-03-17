@@ -46,8 +46,13 @@ export class InterviewEngine {
     const tree = getQuestionTree(this.bookType)
 
     for (const node of tree) {
+      // Match on both file_type AND title to avoid over-counting when
+      // multiple questions target the same KB layer (e.g., two world-building questions)
       const hasFile = this.kbFiles.some(
-        (f) => f.file_type === node.targetKBLayer && f.content.trim().length > 20
+        (f) =>
+          f.file_type === node.targetKBLayer &&
+          f.content.trim().length > 20 &&
+          f.title.toLowerCase().includes(node.targetTitle.toLowerCase().split(' ')[0])
       )
       if (hasFile) {
         this.answeredIds.add(node.id)
@@ -196,10 +201,10 @@ export class InterviewEngine {
    */
   getInterviewPrompt(): string {
     const next = this.getNextQuestion()
-    const completeness = this.getCompleteness()
-    const readiness = this.getStageBReadiness()
 
     if (!next) {
+      const completeness = this.getCompleteness()
+      const readiness = this.getStageBReadiness()
       return `The world-building interview is complete (${completeness.percentage}% done). ` +
         `The user's world is ${readiness.score}% built. ` +
         (readiness.ready
@@ -207,6 +212,7 @@ export class InterviewEngine {
           : `Blockers: ${readiness.blockers.join(', ')}.`)
     }
 
+    const completeness = this.getCompleteness()
     return [
       `World-building progress: ${completeness.percentage}% complete.`,
       completeness.missingLayers.length > 0
