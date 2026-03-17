@@ -10,6 +10,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { createServerClient } from '@/lib/supabase';
 import { createModelClient } from '@/lib/model-router';
 import type { QualityLevel } from '@/types/database';
 
@@ -61,6 +62,14 @@ If the message is ambiguous or very short (e.g., "hey", "hi"), default to "guide
 
 export async function POST(request: Request): Promise<NextResponse<ClassifyResponse | { error: string }>> {
   try {
+    // Authenticate
+    const supabase = await createServerClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = (await request.json()) as ClassifyRequest;
 
     if (!body.message || typeof body.message !== 'string') {

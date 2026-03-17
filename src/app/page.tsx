@@ -1,6 +1,8 @@
 import { createServerClient } from "@/lib/supabase";
 import type { Book } from "@/types/database";
 import Link from "next/link";
+import AppFooter from "@/components/AppFooter";
+import BookCardMenu from "@/components/BookCardMenu";
 
 function formatDate(dateString: string): string {
   const date = new Date(dateString);
@@ -42,23 +44,28 @@ function StatusIndicator({ status }: { status: Book["status"] }) {
 
 function BookCard({ book }: { book: Book }) {
   return (
-    <Link
-      href={`/book/${book.id}`}
-      className="group flex flex-col justify-between rounded-lg border border-rune-border bg-rune-surface p-6 transition-colors duration-200 hover:border-rune-gold hover:bg-rune-elevated"
-    >
-      <div>
-        <div className="mb-3 flex items-center justify-between">
-          <BookTypeBadge type={book.book_type} />
-          <StatusIndicator status={book.status} />
+    <div className="group relative rounded-lg border border-rune-border bg-rune-surface transition-colors duration-200 hover:border-rune-gold hover:bg-rune-elevated">
+      <Link
+        href={`/book/${book.id}`}
+        className="flex flex-col justify-between p-6"
+      >
+        <div>
+          <div className="mb-3 flex items-center justify-between">
+            <BookTypeBadge type={book.book_type} />
+            <StatusIndicator status={book.status} />
+          </div>
+          <h3 className="mb-2 font-serif text-lg text-rune-heading transition-colors duration-200 group-hover:text-rune-gold">
+            {book.title}
+          </h3>
         </div>
-        <h3 className="mb-2 font-serif text-lg text-rune-heading transition-colors duration-200 group-hover:text-rune-gold">
-          {book.title}
-        </h3>
+        <p className="label-mono mt-4">
+          Last updated {formatDate(book.updated_at)}
+        </p>
+      </Link>
+      <div className="absolute right-3 top-3">
+        <BookCardMenu book={book} />
       </div>
-      <p className="label-mono mt-4">
-        Last updated {formatDate(book.updated_at)}
-      </p>
-    </Link>
+    </div>
   );
 }
 
@@ -94,7 +101,7 @@ function SignInButton() {
   return (
     <Link
       href="/auth"
-      className="inline-flex items-center gap-2 rounded-lg border border-rune-gold bg-transparent px-6 py-3 font-sans text-sm font-medium text-rune-gold transition-colors duration-200 hover:bg-rune-gold hover:text-rune-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rune-gold"
+      className="inline-flex items-center gap-2 rounded-lg bg-rune-heading px-6 py-3 font-sans text-sm font-medium text-white transition-colors duration-200 hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rune-heading"
     >
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -209,6 +216,8 @@ export default async function Home() {
           )}
         </section>
       )}
+
+      <AppFooter />
     </div>
   );
 }

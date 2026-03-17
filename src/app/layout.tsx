@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Source_Serif_4, Source_Sans_3, IBM_Plex_Mono } from "next/font/google";
+import { createServerClient } from "@/lib/supabase";
+import AppHeader from "@/components/AppHeader";
 import "./globals.css";
 
 const sourceSerif = Source_Serif_4({
@@ -28,22 +30,23 @@ export const metadata: Metadata = {
   description: "Write your book through pure conversation.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const supabase = await createServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   return (
     <html
       lang="en"
       className={`${sourceSerif.variable} ${sourceSans.variable} ${ibmPlexMono.variable}`}
     >
       <body className="min-h-dvh">
-        <header className="fixed top-0 left-0 right-0 z-50 flex items-center px-6 py-4">
-          <a href="/" className="font-serif text-xl tracking-tight text-rune-gold hover:text-rune-gold">
-            Rune
-          </a>
-        </header>
+        <AppHeader user={user} />
         <main className="pt-14">
           {children}
         </main>

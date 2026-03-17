@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 
 // ---------------------------------------------------------------------------
 // useSession — Manages a Rune conversation session
@@ -31,10 +31,43 @@ function createMessageId(): string {
   return `msg-${Date.now()}-${messageCounter}`;
 }
 
+/**
+ * Fire background post-session processing (synthesize + extract).
+ * Non-blocking — results flow back via Supabase Realtime subscriptions.
+ */
+function triggerPostSessionProcessing(
+  bookId: string,
+  sessionId: string,
+  assistantResponse: string,
+): void {
+  // Synthesize: generates session summary, backlog items, workspace files
+  fetch('/api/synthesize', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ book_id: bookId, session_id: sessionId }),
+  }).catch((err) => {
+    console.error('[useSession] Background synthesize failed:', err);
+  });
+
+  // Extract: builds knowledge graph entities and relationships
+  fetch('/api/extract', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      text: assistantResponse,
+      book_id: bookId,
+      session_id: sessionId,
+    }),
+  }).catch((err) => {
+    console.error('[useSession] Background extract failed:', err);
+  });
+}
+
 export function useSession(bookId: string, sessionId: string): UseSessionReturn {
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const exchangeCountRef = useRef(0);
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -100,6 +133,13 @@ export function useSession(bookId: string, sessionId: string): UseSessionReturn 
                 : msg,
             ),
           );
+        }
+
+        // After streaming completes, trigger background processing
+        // every 3 exchanges to avoid excessive API calls
+        exchangeCountRef.current += 1;
+        if (exchangeCountRef.current % 3 === 0 && accumulated.length > 0) {
+          triggerPostSessionProcessing(bookId, sessionId, accumulated);
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to send message';

@@ -23,7 +23,6 @@ interface SessionViewProps {
 export default function SessionView({
   bookId,
   sessionId,
-  title,
 }: SessionViewProps) {
   const { messages, sendMessage, isLoading } = useSession(bookId, sessionId);
   const { rooms } = useWorkspace(bookId);
@@ -31,7 +30,7 @@ export default function SessionView({
 
   return (
     <div
-      className="flex h-screen"
+      className="flex h-full"
       style={{ backgroundColor: 'var(--rune-bg)' }}
     >
       {/* LEFT panel — Conversation (65%) */}
@@ -42,23 +41,6 @@ export default function SessionView({
           borderRight: '1px solid var(--rune-border)',
         }}
       >
-        {/* Session header */}
-        <div
-          className="flex items-center px-6 py-3 shrink-0"
-          style={{ borderBottom: '1px solid var(--rune-border)' }}
-        >
-          <h1
-            className="text-base tracking-tight"
-            style={{
-              color: 'var(--rune-heading)',
-              fontFamily: 'var(--font-heading, "Source Serif 4", serif)',
-              letterSpacing: '-0.02em',
-            }}
-          >
-            {title}
-          </h1>
-        </div>
-
         {/* Message area (fills remaining space) */}
         <MessageArea messages={messages} isLoading={isLoading} />
 
@@ -80,6 +62,7 @@ export default function SessionView({
         }}
       >
         <ActivityStream
+          bookId={bookId}
           rooms={rooms}
           backlogItems={backlogItems}
           nextItem={nextItem}
