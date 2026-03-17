@@ -158,3 +158,74 @@ An 11-stage gated build methodology. Each stage has a gate question. You don't a
 1. **README** -- Comprehensive open-source README with project description, feature list, architecture overview, tech stack, getting started guide, environment variables table, Docker self-hosting instructions, and credits
 2. **BUILDING.md updates** -- Full stage documentation from Foundation through Polish, recording what was built at each stage and why
 3. **TypeScript verification** -- All files pass `tsc --noEmit` in strict mode with no errors
+
+---
+
+## Stage 9: Launch Prep (IN PROGRESS)
+
+- **Gate Question:** "Is the launch checklist complete?"
+- **Started:** 2026-03-17
+
+### Deployment (Phase 1)
+
+1. **Dedicated Supabase project** (`rune-prod`, ref: `blzynsxgamtvbuimuegj`) -- New project in East US, 4 initial migrations applied, 8 core tables with RLS. Separated from the shared id8Labs instance to avoid schema collisions.
+2. **Vercel deployment** -- Live at `rune-two.vercel.app`. Env vars updated to new Supabase project. Production builds passing.
+3. **Auth flow** -- Magic link sign-in (no passwords, no OAuth). Supabase OTP + verification.
+
+### World-Building Knowledge Base (Phase 2)
+
+The foundational architectural change. Evolved the flat entity graph (person/place/theme/event with mention counts) into a hierarchical, scoped, versioned knowledge base modeled after id8composer.
+
+1. **Database schema** (`migrations/20260317220000_knowledge_base.sql`) -- `knowledge_files` table with 13 file types, 4 scopes (global/regional/local/session), 6 folder types (foundation/strategy/drafts/sandbox/production/assets). `knowledge_file_versions` for content snapshots with semantic versioning. `pipeline_stage` column on books (world-building/story-writing/publishing). Helper functions: `get_kb_files_for_scope()` (scope inheritance), `create_kb_version()` (atomic versioning), `restore_kb_version()`. Full RLS + Realtime.
+
+2. **TypeScript types** (`types/knowledge.ts`, `types/folder-system.ts`) -- `KnowledgeFile`, `KBFileVersion`, `KnowledgeScope`, `FolderType`, `PipelineStage`. Predefined file constants for Foundation (World Bible, Characters, Settings, Lore, Relationships, Timeline), Strategy (Story Arc, Chapter Outlines, Character Journeys, Thematic Through-Lines), and Assets (Research, Interview Transcripts, Inspiration). `inferFolderAndScope()` auto-routes content to the right place.
+
+3. **KnowledgeBaseService** (`lib/database/knowledge-base.ts`) -- Full CRUD with scope inheritance (local query returns global+regional+local files), search, version history, toggle active. Built on service role client.
+
+4. **Zustand store** (`stores/knowledge-base-store.ts`) -- Client-side state with Supabase Realtime subscriptions. Filter by scope, type, folder. Optimistic toggle with rollback.
+
+5. **Version tracking** (`lib/kb-versioning.ts`) -- Determines version bump type (major/minor/patch) by comparing content changes. Semantic version bumping. Change summary generation.
+
+6. **Data migration** (`migrations/20260317220100_migrate_entities_to_kb.sql`) -- Migrates existing `knowledge_entities` to `knowledge_files` (person->characters, place->world-building, theme->thematic-through-lines, event->timeline). Aggregates `entity_relationships` into a Relationships Map entry. Aggregates `timeline_events` into a Timeline entry. Old tables preserved for rollback.
+
+### Guided Oral Interviews (Phase 3)
+
+The product differentiator -- Rune interviews users through world-building via voice.
+
+1. **Question trees** (`lib/interviews/question-trees.ts`) -- Three structured interview sequences: Fiction (9 nodes: world overview, rules, main character, supporting cast, locations, relationships, timeline, themes, conflict), Memoir (8 nodes: era, people, places, turning points, emotions, relationships, artifacts, lesson), Nonfiction (7 nodes: thesis, audience, key concepts, evidence, counter-arguments, frameworks, structure). Each node has follow-up questions, extraction hints, KB layer targeting, and priority ordering.
+
+2. **Interview engine** (`lib/interviews/engine.ts`) -- Walks the question tree, infers answered questions from existing KB state, detects gaps (entities mentioned but not profiled), tracks completeness percentage, checks Stage B readiness (are characters + world + locations defined?), generates system prompt additions for interview mode.
+
+3. **Voice-to-KB filing pipeline** (`lib/interviews/filing.ts`) -- Classification prompt builder (Haiku determines which KB layer speech belongs to), extraction prompt builder (Sonnet structures raw speech into organized markdown), update-vs-create detection (fuzzy title matching, singleton type handling).
+
+### AI KB Tools (Phase 5)
+
+Gives Rune direct CRUD access to the KB via Claude function calling.
+
+1. **Tool schema** (`lib/ai/kb-tools-schema.ts`) -- 5 Claude tools: `create_kb_entry`, `update_kb_entry`, `search_kb`, `get_kb_entry`, `list_kb_files`. Full JSON Schema input definitions compatible with Claude API `tools` parameter.
+
+2. **Tool executor** (`lib/ai/kb-tools.ts`) -- Routes `tool_use` calls to the correct handler. Each handler validates input, calls KnowledgeBaseService, returns structured results. Supports append and replace modes for updates.
+
+3. **Context inference** (`lib/ai/kb-context-inference.ts`) -- Relevance scoring (active boost, foundation priority, recency, content richness, keyword overlap). Scope inheritance (local sees global+regional+local). Token-budget aware selection (30K token limit). System prompt builder that groups KB files by layer.
+
+4. **KBOperationCard** (`components/KBOperationCard.tsx`) -- UI card for ActivityStream showing Rune's KB operations. Approve/dismiss buttons with auto-approve countdown (10s). Operation type color coding (gold=create, teal=update). Progress bar.
+
+### Three-Stage Pipeline (Phase 4)
+
+The system that ties everything together.
+
+1. **Stage configs** (`lib/pipeline/stages.ts`) -- Three stages (world-building/story-writing/publishing) with KB layers, conversation modes, backlog priorities, room labels ("The Workshop" / "The Study" / "The Press"). Navigation helpers: `getNextStage()`, `getPreviousStage()`, `getAllStages()`.
+
+2. **Stage gates** (`lib/pipeline/gates.ts`) -- Soft completeness thresholds. Gate A->B: characters + world description required, lore + relationships + timeline suggested. Gate B->C: story arc + chapter outlines + drafts required. Percentage scoring. Human-readable gate messages for Rune dialogue.
+
+3. **WorldBuildingDashboard** (`components/WorldBuildingDashboard.tsx`) -- Circular progress ring with gate score, 6 foundation layer cards (populated/empty states with entry counts and word counts), gate readiness indicator with "Start Writing" action, suggestions section.
+
+### Architecture Decisions
+
+| Decision | Choice | Why |
+|----------|--------|-----|
+| Dedicated Supabase project | `rune-prod` separate from shared id8Labs | Schema isolation for KB migration. 120+ tables from other projects were causing conflicts. |
+| id8composer KB model | Hierarchical scope + folder + versioning | Battle-tested for episodic TV. Foundation/Strategy/Working/Assets maps directly to World Building/Story Planning/Drafting/Research. |
+| Voice-to-KB pipeline | Haiku classifies, Sonnet extracts, auto-file | User speaks naturally, Rune structures. No forms, no manual KB management. |
+| Soft stage gates | Suggest readiness, don't block | "Your world is 60% built -- want to keep building?" Not hard enforcement. |
+| Zustand over Context | KB store needs complex state + Realtime sync | Context API re-renders too aggressively for real-time KB updates. |
