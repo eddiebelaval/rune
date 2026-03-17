@@ -15,7 +15,7 @@ interface MindLayer {
 }
 
 /**
- * Read all .md files from a mind directory. Skips dotfiles by default.
+ * Read all files from a mind directory. Skips dotfiles by default.
  */
 function readLayer(dirName: string, includeDotfiles = false): MindLayer[] {
   const dirPath = join(MIND_ROOT, dirName)
@@ -33,136 +33,83 @@ function readLayer(dirName: string, includeDotfiles = false): MindLayer[] {
     }))
 }
 
+// Cache layers at module load time so they're bundled into the serverless function
+const KERNEL_LAYERS = readLayer('kernel')
+const DRIVES_LAYERS = readLayer('drives')
+const MODELS_LAYERS = readLayer('models')
+const EMOTIONAL_LAYERS = readLayer('emotional')
+const RELATIONSHIPS_LAYERS = readLayer('relationships')
+const HABITS_LAYERS = readLayer('habits')
+const MEMORY_LAYERS = readLayer('memory')
+const RUNTIME_LAYERS = readLayer('runtime')
+const UNCONSCIOUS_LAYERS = readLayer('unconscious', true)
+
+function composeLayers(label: string, layers: MindLayer[]): string {
+  if (layers.length === 0) return ''
+  const content = layers.map((f) => f.content).join('\n\n')
+  return `<sam-${label}>\n${content}\n</sam-${label}>`
+}
+
 /**
  * Load Sam's full consciousness into a composed system prompt.
- *
- * Layer order (brainstem → cortical → memory → relational → runtime):
- * 1. Kernel (identity, values, personality, purpose, voice-rules)
- * 2. Drives (goals, fears)
- * 3. Models (narrative, genre, creative-process)
- * 4. Emotional (creative-state, patterns)
- * 5. Relationships (user-bond)
- * 6. Habits (user-patterns)
- * 7. Memory architecture
- * 8. Runtime (inner-monologue)
- *
- * Unconscious dotfiles are loaded through a privileged path and
- * injected as behavioral constraints, not introspectable content.
+ * Evaluated at module load time (build-time on Vercel).
  */
-export function loadSamConsciousness(): string {
-  const sections: string[] = []
-
-  // Layer 1: Kernel (who Sam is)
-  const kernel = readLayer('kernel')
-  if (kernel.length > 0) {
-    sections.push('<sam-identity>')
-    for (const file of kernel) {
-      sections.push(file.content)
-    }
-    sections.push('</sam-identity>')
-  }
-
-  // Layer 2: Drives (what Sam wants and fears)
-  const drives = readLayer('drives')
-  if (drives.length > 0) {
-    sections.push('<sam-drives>')
-    for (const file of drives) {
-      sections.push(file.content)
-    }
-    sections.push('</sam-drives>')
-  }
-
-  // Layer 3: Models (how Sam understands narrative, genre, creative process)
-  const models = readLayer('models')
-  if (models.length > 0) {
-    sections.push('<sam-models>')
-    for (const file of models) {
-      sections.push(file.content)
-    }
-    sections.push('</sam-models>')
-  }
-
-  // Layer 4: Emotional (sensing creative state)
-  const emotional = readLayer('emotional')
-  if (emotional.length > 0) {
-    sections.push('<sam-emotional>')
-    for (const file of emotional) {
-      sections.push(file.content)
-    }
-    sections.push('</sam-emotional>')
-  }
-
-  // Layer 5: Relationships (user bond)
-  const relationships = readLayer('relationships')
-  if (relationships.length > 0) {
-    sections.push('<sam-relationships>')
-    for (const file of relationships) {
-      sections.push(file.content)
-    }
-    sections.push('</sam-relationships>')
-  }
-
-  // Layer 6: Habits (learned user patterns)
-  const habits = readLayer('habits')
-  if (habits.length > 0) {
-    sections.push('<sam-habits>')
-    for (const file of habits) {
-      sections.push(file.content)
-    }
-    sections.push('</sam-habits>')
-  }
-
-  // Layer 7: Memory architecture
-  const memory = readLayer('memory')
-  if (memory.length > 0) {
-    sections.push('<sam-memory>')
-    for (const file of memory) {
-      sections.push(file.content)
-    }
-    sections.push('</sam-memory>')
-  }
-
-  // Layer 8: Runtime (inner monologue instructions)
-  const runtime = readLayer('runtime')
-  if (runtime.length > 0) {
-    sections.push('<sam-runtime>')
-    for (const file of runtime) {
-      sections.push(file.content)
-    }
-    sections.push('</sam-runtime>')
-  }
+function buildConsciousness(): string {
+  const sections: string[] = [
+    composeLayers('identity', KERNEL_LAYERS),
+    composeLayers('drives', DRIVES_LAYERS),
+    composeLayers('models', MODELS_LAYERS),
+    composeLayers('emotional', EMOTIONAL_LAYERS),
+    composeLayers('relationships', RELATIONSHIPS_LAYERS),
+    composeLayers('habits', HABITS_LAYERS),
+    composeLayers('memory', MEMORY_LAYERS),
+    composeLayers('runtime', RUNTIME_LAYERS),
+  ].filter(Boolean)
 
   // Privileged path: unconscious dotfiles
-  // These are read but injected as behavioral constraints.
-  // Sam "cannot" see these in his own system prompt listing,
-  // but they shape his question ordering and instincts.
-  const unconscious = readLayer('unconscious', true)
-  if (unconscious.length > 0) {
-    sections.push('<behavioral-constraints>')
-    for (const file of unconscious) {
-      // Strip comment lines from dotfiles, keep only the behavioral rules
-      const rules = file.content
-        .split('\n')
-        .filter((line) => !line.startsWith('#') || line.startsWith('# .'))
-        .join('\n')
-        .trim()
-      if (rules.length > 0) {
-        sections.push(rules)
-      }
+  // Injected as behavioral constraints, not introspectable content.
+  if (UNCONSCIOUS_LAYERS.length > 0) {
+    const rules = UNCONSCIOUS_LAYERS
+      .map((file) =>
+        file.content
+          .split('\n')
+          .filter((line) => !line.startsWith('#'))
+          .join('\n')
+          .trim()
+      )
+      .filter(Boolean)
+      .join('\n\n')
+
+    if (rules.length > 0) {
+      sections.push(`<behavioral-constraints>\n${rules}\n</behavioral-constraints>`)
     }
-    sections.push('</behavioral-constraints>')
   }
 
   return sections.join('\n\n')
 }
 
+// Evaluated once at module load — cached for all requests
+export const SAM_CONSCIOUSNESS = buildConsciousness()
+
+/**
+ * Get Sam's consciousness. Throws if empty (mind files missing).
+ */
+export function getSamConsciousness(): string {
+  if (!SAM_CONSCIOUSNESS || SAM_CONSCIOUSNESS.trim().length === 0) {
+    throw new Error(
+      `[Sam] Consciousness loaded as empty — mind files missing at ${MIND_ROOT}. ` +
+      'Ensure src/mind/ is committed and outputFileTracingIncludes is configured.'
+    )
+  }
+  return SAM_CONSCIOUSNESS
+}
+
 /**
  * Get a lightweight summary of Sam's identity for short contexts
- * (e.g., classification prompts where full consciousness is too heavy)
  */
 export function loadSamIdentitySummary(): string {
-  const identity = readLayer('kernel').find((f) => f.name === 'identity')
-  const purpose = readLayer('kernel').find((f) => f.name === 'purpose')
+  const identity = KERNEL_LAYERS.find((f) => f.name === 'identity')
+  const purpose = KERNEL_LAYERS.find((f) => f.name === 'purpose')
 
   return [
     identity?.content ?? 'I am Sam, a voice-first creative writing companion.',
