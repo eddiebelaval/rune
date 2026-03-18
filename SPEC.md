@@ -1,9 +1,9 @@
 # SPEC.md -- Living Specification
 ## Rune
 
-> Last reconciled: 2026-03-17 | Build stage: Stage 8 (Polish) PASSED, Stage 9 (Launch Prep) pending
+> Last reconciled: 2026-03-18 | Build stage: Stage 9 (Launch Prep) IN PROGRESS
 > Drift status: CURRENT
-> VISION alignment: 33% (4 of 12 pillars realized, 2 partial)
+> VISION alignment: 42% (5 of 12 pillars realized, 3 partial)
 
 ---
 

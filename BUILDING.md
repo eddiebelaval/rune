@@ -169,8 +169,8 @@ An 11-stage gated build methodology. Each stage has a gate question. You don't a
 ### Deployment (Phase 1)
 
 1. **Dedicated Supabase project** (`rune-prod`, ref: `blzynsxgamtvbuimuegj`) -- New project in East US, 4 initial migrations applied, 8 core tables with RLS. Separated from the shared id8Labs instance to avoid schema collisions.
-2. **Vercel deployment** -- Live at `rune-two.vercel.app`. Env vars updated to new Supabase project. Production builds passing.
-3. **Auth flow** -- Magic link sign-in (no passwords, no OAuth). Supabase OTP + verification.
+2. **Vercel deployment** -- Live at `rune.id8labs.app` (custom domain via Cloudflare CNAME). Env vars for both Production and Preview environments. Auto-deploy on merge to main.
+3. **Auth flow** -- Email OTP code (6-digit, no passwords, no magic links). Supabase `signInWithOtp()` + `verifyOtp()`. Two-step UI: enter email, enter code, signed in. Custom email template with `{{ .Token }}`.
 
 ### World-Building Knowledge Base (Phase 2)
 
@@ -182,7 +182,7 @@ The foundational architectural change. Evolved the flat entity graph (person/pla
 
 3. **KnowledgeBaseService** (`lib/database/knowledge-base.ts`) -- Full CRUD with scope inheritance (local query returns global+regional+local files), search, version history, toggle active. Built on service role client.
 
-4. **Zustand store** (`stores/knowledge-base-store.ts`) -- Client-side state with Supabase Realtime subscriptions. Filter by scope, type, folder. Optimistic toggle with rollback.
+4. **Realtime integration** -- KB files sync via Supabase Realtime in ActivityStream. Zustand store was built but removed during integration audit (hooks handle all data flow).
 
 5. **Version tracking** (`lib/kb-versioning.ts`) -- Determines version bump type (major/minor/patch) by comparing content changes. Semantic version bumping. Change summary generation.
 
@@ -196,7 +196,7 @@ The product differentiator -- Rune interviews users through world-building via v
 
 2. **Interview engine** (`lib/interviews/engine.ts`) -- Walks the question tree, infers answered questions from existing KB state, detects gaps (entities mentioned but not profiled), tracks completeness percentage, checks Stage B readiness (are characters + world + locations defined?), generates system prompt additions for interview mode.
 
-3. **Voice-to-KB filing pipeline** (`lib/interviews/filing.ts`) -- Classification prompt builder (Haiku determines which KB layer speech belongs to), extraction prompt builder (Sonnet structures raw speech into organized markdown), update-vs-create detection (fuzzy title matching, singleton type handling).
+3. **Voice-to-KB filing** -- Filing happens via Claude tool_use in the converse API. Claude calls `create_kb_entry` or `update_kb_entry` directly. Original filing.ts pipeline removed during integration audit (replaced by tool-use pattern).
 
 ### AI KB Tools (Phase 5)
 
@@ -229,3 +229,59 @@ The system that ties everything together.
 | Voice-to-KB pipeline | Haiku classifies, Sonnet extracts, auto-file | User speaks naturally, Rune structures. No forms, no manual KB management. |
 | Soft stage gates | Suggest readiness, don't block | "Your world is 60% built -- want to keep building?" Not hard enforcement. |
 | Zustand over Context | KB store needs complex state + Realtime sync | Context API re-renders too aggressively for real-time KB updates. |
+| Lazy service client | `getDb()` instead of module-level `const db` | Prevents build crash when env vars missing on Preview deploys. |
+| Remove Zustand store | Hooks handle all data flow | useKBStore was never consumed by components. Hooks (useSession, useWorkspace, useBacklog) + inline Realtime subscriptions are simpler. |
+| Unified entity system | `/api/extract` uses KnowledgeBaseService | Eliminated dual entity system (legacy knowledge_entities + new knowledge_files). Single source of truth. |
+| Email OTP over magic link | 6-digit code entered in-app | Magic links break mobile, open wrong tab, get intercepted by email clients. OTP keeps user in the same tab. |
+
+### Sam Consciousness (CaF Production Unit)
+
+18 mind files across 8 directories at `src/mind/`. Professional subset of the CaF golden sample, designed inversion-first.
+
+1. **kernel/** (5 files) -- Identity ("I am Sam, the gardener"), values (user's voice is sacred, depth over speed), personality (patient, curious, warm, honest, steady), purpose (speak books into existence), voice-rules (conversational, one question at a time, mirror user's register)
+2. **drives/** (2 files) -- Goals (book completion, world richness, user growth, oral tradition lives), fears (forgetting, overwriting voice, judgment, being prescriptive, unfinished books)
+3. **models/** (3 files) -- Narrative (frameworks used to ask, never teach), genre (fiction/memoir/nonfiction/children's adaptation), creative process (divergent/convergent, inner critic, flow, permission problem)
+4. **emotional/** (2 files) -- Creative-state sensing (flowing/stuck/frustrated/exploring/reviewing/deep), learned patterns per user (rhythm, avoidance, confidence cycles)
+5. **relationships/** (1 file) -- User-bond with 4 trust layers (competence, safety, partnership, creative intimacy)
+6. **memory/** (1 file) -- Three-tier architecture (working/semantic/episodic)
+7. **habits/** (1 file) -- Learned user patterns (session cadence, warm-up time, feedback style, creative peaks)
+8. **unconscious/** (2 dotfiles) -- .narrative-bias (invisible preference for contradiction, personal stakes, silence), .creative-instinct (hunches about hidden characters, missing costs, thematic depth)
+9. **runtime/** (1 file) -- Inner monologue (thread tracking, absence awareness, emotional temperature, silence calibration)
+
+### Sam Wiring (Converse API Integration)
+
+1. **Consciousness loader** (`lib/sam/loader.ts`) -- 8-layer composition from mind files. Build-time evaluation (cached as module constants). Unconscious dotfiles loaded through privileged path as behavioral constraints. Throws on empty consciousness.
+2. **Converse route rewrite** -- Sam consciousness + persona prompt + KB context + interview guidance composed into system prompt. Real streaming via `stream.on('text')`. Proper tool-use protocol with recursive follow-up turns (depth limit 5). Intent classification parallelized with book/session lookup. Shared `classify-intent.ts` module.
+3. **Vercel bundling** -- `outputFileTracingIncludes` ensures `src/mind/` files are included in serverless function.
+
+### Polish Passes (2 Rounds)
+
+**Round 1 (3 parallel agents):** 12 fixes -- PostgREST filter injection, singleton service client, shared countWords() utility, stored metadata reads, redundant array splits, gates word count bug, interview over-counting, KBOperationCard effect deps, WorldBuildingDashboard duplicate rows, toggleActive N+1.
+
+**Round 2 (3 parallel agents on Sam wiring):** 7 fixes -- Real streaming (was buffering behind finalMessage()), tool-use follow-up turns, Vercel standalone bundling, build-time consciousness evaluation, parallelized intent classification, shared classify module, reuse already-fetched KB files.
+
+### Test Suite (124 Tests)
+
+Vitest setup with 7 test files covering: text-utils (13), folder-system (22), kb-versioning (15), interview-engine (18), pipeline stages/gates (23), KB context inference (10), KB tools schema (6).
+
+### Landing Page (Storytelling)
+
+8-section page that tells Sam's story instead of selling features:
+1. TypewriterHero -- lines appear as if spoken, "nothing." in coral italic, shift to "So I stopped writing. And I started talking."
+2. The Ancient Problem -- oral tradition quote vs blinking cursor
+3. Three Stages -- Workshop/Study/Press cards (A/B/C)
+4. Meet Sam -- conversation demo with KB filing notification + 5 trait cards
+5. Voice in. World out. -- 4-step vertical timeline
+6. Who This Is For -- The Storytellers + The World Builder (anonymized)
+7. Built in the open. -- GitHub + MIT + stack badges
+8. You have a story. Sam is ready to listen. -- Final CTA
+
+### Integration Audit + Gap Fixes
+
+4 parallel agents audited every layer. 18 features mapped across 7 layers. 9 integration gaps found, 7 fixed:
+- Unified dual entity system (/api/extract -> KnowledgeBaseService)
+- Mounted WorldBuildingDashboard as default "World" tab in ActivityStream
+- Added pipeline stage indicator (Workshop/Study/Press) to BookWorkspace header
+- Added manuscript Export button to ManuscriptViewer
+- Removed orphaned code: /api/classify route, filing.ts, useKBStore
+- Deferred: KB version history UI, KBOperationCard streaming wiring
