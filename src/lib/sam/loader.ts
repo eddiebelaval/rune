@@ -37,6 +37,7 @@ function readLayer(dirName: string, includeDotfiles = false): MindLayer[] {
 const KERNEL_LAYERS = readLayer('kernel')
 const DRIVES_LAYERS = readLayer('drives')
 const MODELS_LAYERS = readLayer('models')
+const CRAFT_LAYERS = readLayer('craft')
 const EMOTIONAL_LAYERS = readLayer('emotional')
 const RELATIONSHIPS_LAYERS = readLayer('relationships')
 const HABITS_LAYERS = readLayer('habits')
@@ -59,6 +60,7 @@ function buildConsciousness(): string {
     composeLayers('identity', KERNEL_LAYERS),
     composeLayers('drives', DRIVES_LAYERS),
     composeLayers('models', MODELS_LAYERS),
+    composeLayers('craft', CRAFT_LAYERS),
     composeLayers('emotional', EMOTIONAL_LAYERS),
     composeLayers('relationships', RELATIONSHIPS_LAYERS),
     composeLayers('habits', HABITS_LAYERS),
