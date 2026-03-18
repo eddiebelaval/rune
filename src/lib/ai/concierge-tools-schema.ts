@@ -183,6 +183,37 @@ export const CONCIERGE_TOOLS: Tool[] = [
       required: [],
     },
   },
+
+  // ── Import / Export ──────────────────────────────────────
+  {
+    name: 'import_text',
+    description: 'Import existing writing into the book. Use when the user pastes text or says they have existing writing to bring in. Sam will parse and route the content to the correct workspace locations.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        book_id: { type: 'string', description: 'ID of the book to import into' },
+        text: { type: 'string', description: 'The text content to import' },
+        title: { type: 'string', description: 'Optional title for the imported content' },
+      },
+      required: ['book_id', 'text'],
+    },
+  },
+  {
+    name: 'export_book',
+    description: 'Export a book\'s content. Use when the user wants to download, back up, or export their book. Returns a summary of what was exported.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        book_id: { type: 'string', description: 'ID of the book to export' },
+        format: {
+          type: 'string',
+          enum: ['full', 'manuscript', 'workspace', 'kb'],
+          description: 'Export format: full (everything), manuscript (chapters as markdown), workspace (all files), kb (knowledge base)',
+        },
+      },
+      required: ['book_id'],
+    },
+  },
 ]
 
 export type ConciergeToolName = (typeof CONCIERGE_TOOLS)[number]['name']

@@ -4,8 +4,11 @@ import { createServiceClient } from '../supabase'
 import { initializeWorkspace, createWorkspaceFile, updateWorkspaceFile } from '../workspace'
 import { getBacklogItems, addressItem, dismissItem } from '../backlog'
 import { assembleManuscript } from '../manuscript'
+import { getWorkspaceStructure } from '../workspace'
+import { parseText } from '../import/parser'
+import { routeImport } from '../import/router'
 import { isValidUUID } from '../validation'
-import type { Room } from '@/types/database'
+import type { Room, BookType } from '@/types/database'
 import type { ConciergeToolName } from './concierge-tools-schema'
 
 export interface ToolCallResult {
@@ -46,6 +49,8 @@ export async function executeConciergetool(
     case 'get_manuscript': return handleGetManuscript(args, userId)
     case 'get_profile': return handleGetProfile(userId)
     case 'update_profile': return handleUpdateProfile(args, userId)
+    case 'import_text': return handleImportText(args, userId, bookId)
+    case 'export_book': return handleExportBook(args, userId)
     default:
       return { success: false, error: `Unknown concierge tool: ${toolName}` }
   }
@@ -487,5 +492,134 @@ async function handleUpdateProfile(
     }
   } catch (err) {
     return { success: false, error: errorMessage(err, 'Failed to update profile') }
+  }
+}
+
+// ── Import / Export ─────────────────────────────────────────
+
+async function handleImportText(
+  args: Record<string, unknown>,
+  userId: string,
+  bookId: string,
+): Promise<ToolCallResult> {
+  try {
+    const targetBookId = (args.book_id as string) || bookId
+    if (!isValidUUID(targetBookId)) return { success: false, error: 'Invalid book_id' }
+
+    const text = args.text as string
+    if (!text || text.trim().length === 0) return { success: false, error: 'No text provided' }
+
+    // Verify ownership and get book type
+    const { data: book } = await getDb()
+      .from('books')
+      .select('id, book_type')
+      .eq('id', targetBookId)
+      .eq('user_id', userId)
+      .single()
+
+    if (!book) return { success: false, error: 'Book not found' }
+
+    const title = (args.title as string) ?? 'Imported Content'
+    const doc = parseText(text, title)
+    const result = await routeImport(doc, targetBookId, book.book_type as BookType, userId)
+
+    const routedCount = result.routed.length
+    const fallbackCount = result.fallback.length
+    const kbCount = [...result.routed, ...result.fallback].filter((r) => r.kbEntryCreated).length
+
+    return {
+      success: true,
+      data: {
+        totalSections: result.totalSections,
+        routed: routedCount,
+        fallback: fallbackCount,
+        kbEntriesCreated: kbCount,
+        wordCount: result.wordCount,
+        sections: result.routed.map((r) => ({
+          title: r.title,
+          room: r.room,
+          category: r.category,
+        })),
+        message: `Imported ${result.wordCount} words across ${result.totalSections} sections. ${routedCount} classified, ${fallbackCount} to raw-sessions${kbCount > 0 ? `, ${kbCount} KB entries created` : ''}.`,
+      },
+    }
+  } catch (err) {
+    return { success: false, error: errorMessage(err, 'Failed to import text') }
+  }
+}
+
+async function handleExportBook(
+  args: Record<string, unknown>,
+  userId: string,
+): Promise<ToolCallResult> {
+  try {
+    const bookId = args.book_id as string
+    if (!isValidUUID(bookId)) return { success: false, error: 'Invalid book_id' }
+
+    // Verify ownership
+    const { data: book } = await getDb()
+      .from('books')
+      .select('id, title, book_type')
+      .eq('id', bookId)
+      .eq('user_id', userId)
+      .single()
+
+    if (!book) return { success: false, error: 'Book not found' }
+
+    const format = (args.format as string) ?? 'full'
+
+    // For concierge tool calls, return a summary (actual file download goes through /api/export)
+    if (format === 'manuscript') {
+      const manuscript = await assembleManuscript(bookId)
+      return {
+        success: true,
+        data: {
+          format: 'manuscript',
+          chapters: manuscript.stats.chapterCount,
+          wordCount: manuscript.stats.wordCount,
+          pages: manuscript.stats.estimatedPages,
+          downloadUrl: `/api/export?book_id=${bookId}&format=manuscript`,
+          message: `"${book.title}" manuscript: ${manuscript.stats.chapterCount} chapters, ${manuscript.stats.wordCount} words (~${manuscript.stats.estimatedPages} pages). Download from the export link.`,
+        },
+      }
+    }
+
+    if (format === 'workspace') {
+      const structure = await getWorkspaceStructure(bookId)
+      const fileCount = Object.values(structure.rooms).reduce(
+        (sum, cats) => sum + Object.values(cats).reduce((s, files) => s + files.length, 0), 0,
+      )
+      return {
+        success: true,
+        data: {
+          format: 'workspace',
+          fileCount,
+          downloadUrl: `/api/export?book_id=${bookId}&format=workspace`,
+          message: `"${book.title}" workspace: ${fileCount} files across 3 rooms. Download from the export link.`,
+        },
+      }
+    }
+
+    // Default: full export summary
+    const manuscript = await assembleManuscript(bookId)
+    const structure = await getWorkspaceStructure(bookId)
+    const fileCount = Object.values(structure.rooms).reduce(
+      (sum, cats) => sum + Object.values(cats).reduce((s, files) => s + files.length, 0), 0,
+    )
+
+    return {
+      success: true,
+      data: {
+        format: 'full',
+        title: book.title,
+        chapters: manuscript.stats.chapterCount,
+        wordCount: manuscript.stats.wordCount,
+        workspaceFiles: fileCount,
+        downloadUrl: `/api/export?book_id=${bookId}&format=full`,
+        message: `Full backup of "${book.title}": ${manuscript.stats.chapterCount} chapters, ${manuscript.stats.wordCount} words, ${fileCount} workspace files. Download from the export link.`,
+      },
+    }
+  } catch (err) {
+    return { success: false, error: errorMessage(err, 'Failed to export book') }
   }
 }

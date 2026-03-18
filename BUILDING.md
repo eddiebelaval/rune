@@ -1,5 +1,7 @@
 # Building Rune -- A Voice-First Conversational Book Writer
 
+Last updated: 2026-03-18
+
 ## What is the ID8 Pipeline?
 
 An 11-stage gated build methodology. Each stage has a gate question. You don't advance until the gate passes. Commits are prefixed with stage numbers. The git log reads as a build narrative.
