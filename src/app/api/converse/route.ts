@@ -20,10 +20,12 @@ import { getSamConsciousness } from '@/lib/sam/loader';
 import { selectRelevantFiles, buildKBSystemContext } from '@/lib/ai/kb-context-inference';
 import { KB_TOOLS } from '@/lib/ai/kb-tools-schema';
 import { executeKBTool } from '@/lib/ai/kb-tools';
+import { CONCIERGE_TOOLS, CONCIERGE_TOOL_NAMES } from '@/lib/ai/concierge-tools-schema';
+import { executeConciergetool } from '@/lib/ai/concierge-tools';
 import { classifyIntent } from '@/lib/ai/classify-intent';
 import { InterviewEngine } from '@/lib/interviews/engine';
-import { KnowledgeBaseService } from '@/lib/database/knowledge-base';
 import type { KBToolName } from '@/lib/ai/kb-tools-schema';
+import type { ConciergeToolName } from '@/lib/ai/concierge-tools-schema';
 import type { ConversationIntent } from '@/lib/ai/classify-intent';
 import type { QualityLevel, SessionMode, Book, Session } from '@/types/database';
 import type { ModelTask } from '@/types/models';
@@ -255,7 +257,7 @@ async function streamWithToolUse(
     max_tokens: 4096,
     system: systemPrompt,
     messages,
-    tools: KB_TOOLS,
+    tools: [...KB_TOOLS, ...CONCIERGE_TOOLS],
   });
 
   // Stream text deltas to client in real time
@@ -275,15 +277,15 @@ async function streamWithToolUse(
       (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use'
     );
 
-    // Execute all tool calls
+    // Execute all tool calls — route to correct handler
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
     for (const block of toolUseBlocks) {
-      const result = await executeKBTool(
-        block.name as KBToolName,
-        block.input as Record<string, unknown>,
-        userId,
-        bookId,
-      );
+      const args = block.input as Record<string, unknown>;
+      const isConcierge = CONCIERGE_TOOL_NAMES.has(block.name);
+
+      const result = isConcierge
+        ? await executeConciergetool(block.name as ConciergeToolName, args, userId, bookId)
+        : await executeKBTool(block.name as KBToolName, args, userId, bookId);
 
       toolResults.push({
         type: 'tool_result',
@@ -291,8 +293,9 @@ async function streamWithToolUse(
         content: JSON.stringify(result.success ? result.data : { error: result.error }),
       });
 
-      // Notify client of KB operation
-      const notification = `\n[KB: ${block.name} — ${result.success ? 'done' : 'failed'}]\n`;
+      // Notify client of operation
+      const label = isConcierge ? 'Sam' : 'KB';
+      const notification = `\n[${label}: ${block.name} — ${result.success ? 'done' : 'failed'}]\n`;
       controller.enqueue(encoder.encode(notification));
     }
 
