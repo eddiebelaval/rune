@@ -1,20 +1,27 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { WorkspaceRooms } from '@/hooks/useWorkspace';
-import type { BacklogItem, Room } from '@/types/database';
+import type { BacklogItem, Room, WorkspaceFile } from '@/types/database';
+import type { KnowledgeFile } from '@/types/knowledge';
+import KnowledgeGraph from '@/components/KnowledgeGraph';
+import ManuscriptViewer from '@/components/ManuscriptViewer';
+import BookProgress from '@/components/BookProgress';
+import WorldBuildingDashboard from '@/components/WorldBuildingDashboard';
+import { createClient } from '@/lib/supabase-browser';
 
 // ---------------------------------------------------------------------------
-// ActivityStream — Right sidebar with Workspace + Progress tabs
+// ActivityStream — Right sidebar with Workspace + Progress + Graph + Manuscript
 // ---------------------------------------------------------------------------
 
 interface ActivityStreamProps {
+  bookId: string;
   rooms: WorkspaceRooms;
   backlogItems: BacklogItem[];
   nextItem: BacklogItem | null;
 }
 
-type Tab = 'workspace' | 'progress';
+type Tab = 'world' | 'workspace' | 'progress' | 'graph' | 'manuscript';
 
 /** Simple inline SVG chevron for expandable sections */
 function ChevronIcon({ expanded }: { expanded: boolean }) {
@@ -49,31 +56,77 @@ const roomLabels: Record<Room, string> = {
   publish: 'Publish',
 };
 
-/** Backlog item type labels */
-const itemTypeLabels: Record<string, string> = {
-  question: 'Question',
-  contradiction: 'Contradiction',
-  thin_spot: 'Thin Spot',
-  unexplored: 'Unexplored',
-  review: 'Review',
-  idea: 'Idea',
-};
-
 function WorkspaceTab({ rooms }: { rooms: WorkspaceRooms }) {
   const [expandedRooms, setExpandedRooms] = useState<Record<string, boolean>>({
     brainstorm: true,
     drafts: false,
     publish: false,
   });
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+  const [selectedFile, setSelectedFile] = useState<WorkspaceFile | null>(null);
 
   const toggleRoom = (room: string) => {
     setExpandedRooms((prev) => ({ ...prev, [room]: !prev[room] }));
   };
 
+  const toggleCategory = (key: string) => {
+    setExpandedCategories((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleFileClick = useCallback((file: WorkspaceFile) => {
+    setSelectedFile((prev) => (prev?.id === file.id ? null : file));
+  }, []);
+
   const roomKeys = Object.keys(rooms) as Room[];
 
   return (
     <div className="space-y-1">
+      {/* File viewer panel */}
+      {selectedFile && (
+        <div
+          className="mx-3 mb-2 rounded-lg p-3"
+          style={{
+            backgroundColor: 'var(--rune-elevated)',
+            border: '1px solid var(--rune-border)',
+          }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span
+              className="text-xs font-medium"
+              style={{
+                color: 'var(--rune-heading)',
+                fontFamily: 'var(--font-heading, "Source Serif 4", serif)',
+              }}
+            >
+              {selectedFile.title}
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelectedFile(null)}
+              className="text-xs cursor-pointer"
+              style={{ color: 'var(--rune-muted)' }}
+            >
+              Close
+            </button>
+          </div>
+          <div
+            className="text-xs leading-relaxed whitespace-pre-wrap"
+            style={{
+              color: 'var(--rune-text)',
+              fontFamily: 'var(--font-body, "Source Sans 3", sans-serif)',
+              maxHeight: '200px',
+              overflowY: 'auto',
+            }}
+          >
+            {selectedFile.content || (
+              <span className="italic" style={{ color: 'var(--rune-muted)' }}>
+                Empty file
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {roomKeys.map((roomKey) => {
         const categories = rooms[roomKey];
         const categoryKeys = Object.keys(categories);
@@ -112,31 +165,64 @@ function WorkspaceTab({ rooms }: { rooms: WorkspaceRooms }) {
               </span>
             </button>
 
-            {/* Categories */}
+            {/* Categories with files */}
             {isExpanded && categoryKeys.length > 0 && (
               <div className="ml-5 pl-3 space-y-0.5" style={{ borderLeft: '1px solid var(--rune-border)' }}>
-                {categoryKeys.map((cat) => (
-                  <div
-                    key={cat}
-                    className="flex items-center justify-between px-2 py-1"
-                  >
-                    <span
-                      className="text-xs"
-                      style={{
-                        color: 'var(--rune-text)',
-                        fontFamily: 'var(--font-body, "Source Sans 3", sans-serif)',
-                      }}
-                    >
-                      {cat}
-                    </span>
-                    <span
-                      className="text-xs"
-                      style={{ color: 'var(--rune-muted)' }}
-                    >
-                      {categories[cat].length}
-                    </span>
-                  </div>
-                ))}
+                {categoryKeys.map((cat) => {
+                  const catKey = `${roomKey}-${cat}`;
+                  const catFiles = categories[cat];
+                  const isCatExpanded = expandedCategories[catKey] ?? false;
+
+                  return (
+                    <div key={cat}>
+                      <button
+                        type="button"
+                        onClick={() => toggleCategory(catKey)}
+                        className="flex items-center justify-between w-full px-2 py-1 rounded cursor-pointer transition-colors duration-100"
+                        style={{
+                          backgroundColor: isCatExpanded ? 'color-mix(in srgb, var(--rune-elevated) 50%, transparent)' : 'transparent',
+                        }}
+                      >
+                        <span
+                          className="text-xs"
+                          style={{
+                            color: 'var(--rune-text)',
+                            fontFamily: 'var(--font-body, "Source Sans 3", sans-serif)',
+                          }}
+                        >
+                          {cat}
+                        </span>
+                        <span
+                          className="text-xs"
+                          style={{ color: 'var(--rune-muted)' }}
+                        >
+                          {catFiles.length}
+                        </span>
+                      </button>
+
+                      {/* File list within category */}
+                      {isCatExpanded && catFiles.length > 0 && (
+                        <div className="ml-3 space-y-px">
+                          {catFiles.map((file) => (
+                            <button
+                              key={file.id}
+                              type="button"
+                              onClick={() => handleFileClick(file)}
+                              className="w-full text-left px-2 py-1 rounded text-xs truncate cursor-pointer transition-colors duration-100"
+                              style={{
+                                color: selectedFile?.id === file.id ? 'var(--rune-gold)' : 'var(--rune-muted)',
+                                backgroundColor: selectedFile?.id === file.id ? 'color-mix(in srgb, var(--rune-gold) 8%, transparent)' : 'transparent',
+                                fontFamily: 'var(--font-body, "Source Sans 3", sans-serif)',
+                              }}
+                            >
+                              {file.title}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -158,131 +244,50 @@ function WorkspaceTab({ rooms }: { rooms: WorkspaceRooms }) {
   );
 }
 
-function ProgressTab({
-  rooms,
-  backlogItems,
-  nextItem,
-}: {
-  rooms: WorkspaceRooms;
-  backlogItems: BacklogItem[];
-  nextItem: BacklogItem | null;
-}) {
-  // Compute stats
-  const totalFiles = Object.values(rooms).reduce(
-    (sum, categories) =>
-      sum + Object.values(categories).reduce((s, files) => s + files.length, 0),
-    0,
-  );
+const TAB_LABELS: Record<Tab, string> = {
+  world: 'World',
+  workspace: 'Files',
+  progress: 'Progress',
+  graph: 'Graph',
+  manuscript: 'Read',
+};
 
-  return (
-    <div className="space-y-4">
-      {/* Stats grid */}
-      <div className="grid grid-cols-2 gap-2 px-3">
-        <StatCard label="Files" value={totalFiles} />
-        <StatCard label="Backlog" value={backlogItems.length} />
-      </div>
+export default function ActivityStream({ bookId, rooms, backlogItems, nextItem }: ActivityStreamProps) {
+  const [activeTab, setActiveTab] = useState<Tab>('world');
+  const [kbFiles, setKbFiles] = useState<KnowledgeFile[]>([]);
 
-      {/* Next backlog item */}
-      {nextItem && (
-        <div className="px-3">
-          <p
-            className="text-xs uppercase tracking-wider mb-2"
-            style={{
-              color: 'var(--rune-muted)',
-              fontFamily: 'var(--font-mono, "IBM Plex Mono", monospace)',
-            }}
-          >
-            Next Up
-          </p>
-          <div
-            className="rounded-lg p-3"
-            style={{
-              backgroundColor: 'var(--rune-elevated)',
-              border: '1px solid var(--rune-border)',
-            }}
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <span
-                className="inline-block w-1.5 h-1.5 rounded-full"
-                style={{ backgroundColor: 'var(--rune-teal)' }}
-              />
-              <span
-                className="text-xs uppercase tracking-wider"
-                style={{
-                  color: 'var(--rune-teal)',
-                  fontFamily: 'var(--font-mono, "IBM Plex Mono", monospace)',
-                }}
-              >
-                {itemTypeLabels[nextItem.item_type] ?? nextItem.item_type}
-              </span>
-              <span
-                className="ml-auto text-xs"
-                style={{ color: 'var(--rune-muted)' }}
-              >
-                P{nextItem.priority}
-              </span>
-            </div>
-            <p
-              className="text-sm leading-snug"
-              style={{
-                color: 'var(--rune-text)',
-                fontFamily: 'var(--font-body, "Source Sans 3", sans-serif)',
-              }}
-            >
-              {nextItem.content}
-            </p>
-          </div>
-        </div>
-      )}
+  // Fetch KB files for WorldBuildingDashboard
+  useEffect(() => {
+    const supabase = createClient();
+    supabase
+      .from('knowledge_files')
+      .select('*')
+      .eq('book_id', bookId)
+      .eq('deleted', false)
+      .order('updated_at', { ascending: false })
+      .then(({ data }) => {
+        if (data) setKbFiles(data as KnowledgeFile[]);
+      });
 
-      {/* No backlog items */}
-      {backlogItems.length === 0 && (
-        <div className="px-3">
-          <p
-            className="text-xs italic"
-            style={{ color: 'var(--rune-muted)' }}
-          >
-            No backlog items yet. They will appear as you write.
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
+    // Realtime subscription for KB files
+    const channel = supabase
+      .channel(`kb-activity-${bookId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge_files', filter: `book_id=eq.${bookId}` }, () => {
+        // Refetch on any change
+        supabase
+          .from('knowledge_files')
+          .select('*')
+          .eq('book_id', bookId)
+          .eq('deleted', false)
+          .order('updated_at', { ascending: false })
+          .then(({ data }) => {
+            if (data) setKbFiles(data as KnowledgeFile[]);
+          });
+      })
+      .subscribe();
 
-function StatCard({ label, value }: { label: string; value: number }) {
-  return (
-    <div
-      className="rounded-lg p-3 text-center"
-      style={{
-        backgroundColor: 'var(--rune-elevated)',
-        border: '1px solid var(--rune-border)',
-      }}
-    >
-      <p
-        className="text-lg font-medium"
-        style={{
-          color: 'var(--rune-heading)',
-          fontFamily: 'var(--font-heading, "Source Serif 4", serif)',
-        }}
-      >
-        {value}
-      </p>
-      <p
-        className="text-xs uppercase tracking-wider"
-        style={{
-          color: 'var(--rune-muted)',
-          fontFamily: 'var(--font-mono, "IBM Plex Mono", monospace)',
-        }}
-      >
-        {label}
-      </p>
-    </div>
-  );
-}
-
-export default function ActivityStream({ rooms, backlogItems, nextItem }: ActivityStreamProps) {
-  const [activeTab, setActiveTab] = useState<Tab>('workspace');
+    return () => { supabase.removeChannel(channel); };
+  }, [bookId]);
 
   return (
     <div className="flex flex-col h-full">
@@ -291,7 +296,7 @@ export default function ActivityStream({ rooms, backlogItems, nextItem }: Activi
         className="flex px-3 pt-3 pb-1 gap-1"
         style={{ borderBottom: '1px solid var(--rune-border)' }}
       >
-        {(['workspace', 'progress'] as const).map((tab) => (
+        {(['world', 'workspace', 'progress', 'graph', 'manuscript'] as const).map((tab) => (
           <button
             key={tab}
             type="button"
@@ -303,18 +308,46 @@ export default function ActivityStream({ rooms, backlogItems, nextItem }: Activi
               color: activeTab === tab ? 'var(--rune-heading)' : 'var(--rune-muted)',
             }}
           >
-            {tab === 'workspace' ? 'Workspace' : 'Progress'}
+            {TAB_LABELS[tab]}
           </button>
         ))}
       </div>
 
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto py-3">
-        {activeTab === 'workspace' ? (
-          <WorkspaceTab rooms={rooms} />
-        ) : (
-          <ProgressTab rooms={rooms} backlogItems={backlogItems} nextItem={nextItem} />
+        {activeTab === 'world' && (
+          <div className="px-3">
+            <WorldBuildingDashboard
+              kbFiles={kbFiles}
+              gateScore={(() => {
+                const types = ['characters', 'world-building', 'lore', 'relationships-map', 'timeline'];
+                const populated = types.filter(t => kbFiles.some(f => f.file_type === t && f.content.length > 30));
+                return Math.round((populated.length / types.length) * 100);
+              })()}
+              gateReady={
+                kbFiles.some(f => f.file_type === 'characters' && f.content.length > 30) &&
+                kbFiles.some(f => f.file_type === 'world-building' && f.content.length > 30)
+              }
+              blockers={[
+                ...(!kbFiles.some(f => f.file_type === 'characters' && f.content.length > 30) ? ['No characters described yet'] : []),
+                ...(!kbFiles.some(f => f.file_type === 'world-building' && f.content.length > 30) ? ['No world description yet'] : []),
+              ]}
+              suggestions={[
+                ...(!kbFiles.some(f => f.file_type === 'lore') ? ['Consider defining the rules of your world'] : []),
+                ...(!kbFiles.some(f => f.file_type === 'relationships-map') ? ['Map character relationships for better dialogue'] : []),
+                ...(!kbFiles.some(f => f.file_type === 'timeline') ? ['A timeline helps maintain consistency'] : []),
+              ]}
+            />
+          </div>
         )}
+        {activeTab === 'workspace' && <WorkspaceTab rooms={rooms} />}
+        {activeTab === 'progress' && <BookProgress bookId={bookId} />}
+        {activeTab === 'graph' && (
+          <div className="px-3">
+            <KnowledgeGraph bookId={bookId} />
+          </div>
+        )}
+        {activeTab === 'manuscript' && <ManuscriptViewer bookId={bookId} />}
       </div>
     </div>
   );

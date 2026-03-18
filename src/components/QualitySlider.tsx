@@ -56,7 +56,7 @@ export default function QualitySlider({ value, onChange }: QualitySliderProps) {
                   border: isActive
                     ? '2px solid var(--rune-gold)'
                     : '2px solid var(--rune-border)',
-                  boxShadow: isActive ? '0 0 0 3px rgba(196, 162, 101, 0.2)' : 'none',
+                  boxShadow: isActive ? '0 0 0 3px color-mix(in srgb, var(--rune-gold) 20%, transparent)' : 'none',
                 }}
                 aria-label={`${level.label} quality`}
               >

@@ -149,7 +149,7 @@ export default function VoiceInput({ onSend, disabled = false }: VoiceInputProps
       {error && (
         <p
           className="text-xs mb-2 px-1"
-          style={{ color: '#e57373' }}
+          style={{ color: 'var(--rune-error)' }}
         >
           {error}
         </p>

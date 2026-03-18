@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase-browser';
+import { useRouter } from 'next/navigation';
 import type { BacklogItem, BacklogItemType, EntityType, KnowledgeEntity, Session } from '@/types/database';
 
 // ---------------------------------------------------------------------------
@@ -57,6 +58,21 @@ export default function BookProgress({ bookId }: BookProgressProps) {
   const [backlogItems, setBacklogItems] = useState<BacklogItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+
+  const handleBacklogAction = useCallback(async (id: string, action: 'address' | 'dismiss') => {
+    try {
+      await fetch('/api/backlog', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, action }),
+      });
+      // Remove from local state immediately
+      setBacklogItems((prev) => prev.filter((item) => item.id !== id));
+    } catch (err) {
+      console.error('[BookProgress] Backlog action failed:', err);
+    }
+  }, []);
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -347,6 +363,77 @@ export default function BookProgress({ bookId }: BookProgressProps) {
                 </div>
               );
             })}
+
+            {/* Individual backlog items with actions */}
+            <div className="mt-3 space-y-1.5">
+              {backlogItems.slice(0, 5).map((item) => (
+                <div
+                  key={item.id}
+                  className="rounded p-2.5"
+                  style={{
+                    backgroundColor: 'var(--rune-elevated)',
+                    border: '1px solid var(--rune-border)',
+                  }}
+                >
+                  <div className="flex items-start gap-2 mb-1.5">
+                    <span
+                      className="inline-block w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
+                      style={{ backgroundColor: 'var(--rune-teal)' }}
+                    />
+                    <p
+                      className="text-xs leading-snug flex-1"
+                      style={{
+                        color: 'var(--rune-text)',
+                        fontFamily: 'var(--font-body, "Source Sans 3", sans-serif)',
+                      }}
+                    >
+                      {item.content}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 ml-3.5">
+                    <span
+                      className="text-xs uppercase"
+                      style={{
+                        color: 'var(--rune-muted)',
+                        fontFamily: 'var(--font-mono, "IBM Plex Mono", monospace)',
+                        fontSize: '0.6rem',
+                        letterSpacing: '0.08em',
+                      }}
+                    >
+                      {BACKLOG_TYPE_LABELS[item.item_type]}
+                    </span>
+                    <div className="ml-auto flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => handleBacklogAction(item.id, 'address')}
+                        className="px-2 py-0.5 rounded text-xs cursor-pointer transition-colors duration-100"
+                        style={{
+                          backgroundColor: 'color-mix(in srgb, var(--rune-teal) 12%, transparent)',
+                          color: 'var(--rune-teal)',
+                          fontFamily: 'var(--font-mono, "IBM Plex Mono", monospace)',
+                          fontSize: '0.6rem',
+                        }}
+                      >
+                        Done
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleBacklogAction(item.id, 'dismiss')}
+                        className="px-2 py-0.5 rounded text-xs cursor-pointer transition-colors duration-100"
+                        style={{
+                          backgroundColor: 'color-mix(in srgb, var(--rune-muted) 12%, transparent)',
+                          color: 'var(--rune-muted)',
+                          fontFamily: 'var(--font-mono, "IBM Plex Mono", monospace)',
+                          fontSize: '0.6rem',
+                        }}
+                      >
+                        Skip
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </Section>

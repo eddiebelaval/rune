@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
 /* ============================================================
-   Rune — Library/Study Design System
-   Writing at a mahogany desk with a warm lamp.
-   Dark wood tones, leather textures, aged paper.
+   Rune — Claude-Inspired Design System
+   Warm cream, coral accents, clean surfaces.
+   Light-mode default; dark mode via .dark class.
    ============================================================ */
 
 /* ----------------------------------------------------------
@@ -11,16 +11,17 @@
    ---------------------------------------------------------- */
 
 :root {
-  /* Library/Study Dark Mode (default) */
-  --rune-bg: #1a120e;
-  --rune-surface: #2a1f18;
-  --rune-elevated: #3a2e22;
-  --rune-border: #4a3d30;
-  --rune-muted: #7a6c58;
-  --rune-text: #d4c5b0;
-  --rune-heading: #ebe1d4;
-  --rune-gold: #c4a265;
-  --rune-teal: #4ecdc4;
+  /* Claude-Inspired Light Mode (default) */
+  --rune-bg: #faf9f5;
+  --rune-surface: #ffffff;
+  --rune-elevated: #f5f4ef;
+  --rune-border: #e5e4df;
+  --rune-muted: #73726c;
+  --rune-text: #3d3d3a;
+  --rune-heading: #141413;
+  --rune-gold: #d97757;
+  --rune-teal: #2c84db;
+  --rune-error: #dc3545;
 
   /* Typography variables — set by next/font in layout.tsx */
   --font-serif: var(--font-source-serif), Georgia, 'Times New Roman', serif;
@@ -28,16 +29,17 @@
   --font-mono: var(--font-ibm-plex-mono), 'Courier New', monospace;
 }
 
-.light {
-  --rune-bg: #f5efe6;
-  --rune-surface: #ede5d8;
-  --rune-elevated: #e2d9cc;
-  --rune-border: #d4c9ba;
-  --rune-muted: #8a7d6e;
-  --rune-text: #2a2018;
-  --rune-heading: #1e1810;
-  --rune-gold: #a88840;
-  --rune-teal: #3baa9e;
+.dark {
+  --rune-bg: #1a1918;
+  --rune-surface: #252422;
+  --rune-elevated: #302e2b;
+  --rune-border: #3d3c38;
+  --rune-muted: #8c8b87;
+  --rune-text: #ccccc6;
+  --rune-heading: #eeeeec;
+  --rune-gold: #e08b6d;
+  --rune-teal: #5a9fe6;
+  --rune-error: #e25563;
 }
 
 /* ----------------------------------------------------------
@@ -54,6 +56,7 @@
   --color-rune-heading: var(--rune-heading);
   --color-rune-gold: var(--rune-gold);
   --color-rune-teal: var(--rune-teal);
+  --color-rune-error: var(--rune-error);
 
   --font-serif: var(--font-source-serif), Georgia, 'Times New Roman', serif;
   --font-sans: var(--font-source-sans), system-ui, -apple-system, sans-serif;
@@ -84,6 +87,36 @@ body {
   font-family: var(--font-sans);
   line-height: 1.6;
   min-height: 100dvh;
+  position: relative;
+}
+
+/* Background texture: dot-grid + radial vignette for depth */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      ellipse at center,
+      transparent 0%,
+      transparent 50%,
+      rgba(0, 0, 0, 0.03) 100%
+    ),
+    radial-gradient(
+      circle,
+      rgba(0, 0, 0, 0.06) 1px,
+      transparent 1px
+    );
+  background-size: 100% 100%, 4px 4px;
+  opacity: 0.5;
+}
+
+/* Ensure all content sits above the texture layer */
+body > * {
+  position: relative;
+  z-index: 1;
 }
 
 /* ----------------------------------------------------------
@@ -126,7 +159,7 @@ code, pre, kbd, samp {
 }
 
 /* ----------------------------------------------------------
-   Focus Ring — gold accent for accessibility
+   Focus Ring — coral accent for accessibility
    ---------------------------------------------------------- */
 
 :focus-visible {
