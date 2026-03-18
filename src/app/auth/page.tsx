@@ -133,29 +133,27 @@ export default function AuthPage() {
               type="text"
               inputMode="numeric"
               pattern="[0-9]*"
-              maxLength={6}
               value={otp}
               onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-              placeholder="000000"
+              placeholder="Enter code"
               required
               autoFocus
-              className="mb-4 w-full rounded-lg border px-4 py-3 text-center text-2xl font-mono tracking-[0.3em] transition-colors duration-200 placeholder:opacity-20 focus:outline-none"
+              className="mb-4 w-full rounded-lg border px-4 py-3 text-center text-xl font-mono tracking-[0.2em] transition-colors duration-200 placeholder:opacity-20 focus:outline-none"
               style={{
                 backgroundColor: 'var(--rune-bg)',
                 borderColor: 'var(--rune-border)',
                 color: 'var(--rune-heading)',
-                letterSpacing: '0.3em',
               }}
             />
             <button
               type="submit"
-              disabled={status === 'verifying' || otp.length < 6}
+              disabled={status === 'verifying' || otp.length < 1}
               className="w-full rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200 cursor-pointer"
               style={{
                 backgroundColor: 'var(--rune-gold)',
                 color: 'var(--rune-bg)',
                 cursor: status === 'verifying' ? 'wait' : 'pointer',
-                opacity: status === 'verifying' || otp.length < 6 ? 0.7 : 1,
+                opacity: status === 'verifying' || otp.length < 1 ? 0.7 : 1,
               }}
             >
               {status === 'verifying' ? 'Verifying...' : 'Sign in'}
