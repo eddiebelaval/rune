@@ -50,7 +50,7 @@ export default function SessionView({
         }}
       >
         {/* Message area (fills remaining space) */}
-        <MessageArea messages={messages} isLoading={isLoading} />
+        <MessageArea messages={messages} isLoading={isLoading} bookId={bookId} onSend={sendMessage} />
 
         {/* Voice input bar (fixed at bottom) */}
         <div
