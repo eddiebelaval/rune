@@ -119,7 +119,10 @@ function EmptyState({ bookId, bookTitle, onSend }: { bookId?: string; bookTitle?
           {/* Speak */}
           <button
             type="button"
-            onClick={() => onSend?.("Hey Sam, I'm ready to start. Walk me through how this works.")}
+            onClick={() => onSend?.(isOnboarding
+              ? "Hey Sam, I'm ready to start."
+              : "Hey Sam, let's keep going."
+            )}
             className="w-full flex items-center gap-3 rounded-lg border px-4 py-3 text-left transition-all duration-200 cursor-pointer"
             style={{
               backgroundColor: 'var(--rune-surface)',
@@ -129,10 +132,10 @@ function EmptyState({ bookId, bookTitle, onSend }: { bookId?: string; bookTitle?
             <span style={{ color: 'var(--rune-gold)' }}><MicIcon /></span>
             <div>
               <span className="text-sm block" style={{ color: 'var(--rune-heading)' }}>
-                {isOnboarding ? 'Meet Sam' : 'Start talking to Sam'}
+                {isOnboarding ? 'Start talking to Sam' : 'Continue with Sam'}
               </span>
               <span className="text-xs" style={{ color: 'var(--rune-muted)' }}>
-                {isOnboarding ? 'Sam will introduce himself and set up your book' : 'Voice or text — Sam will guide you'}
+                {isOnboarding ? 'Tell Sam what you want to write' : 'Voice or text — Sam picks up where you left off'}
               </span>
             </div>
           </button>
