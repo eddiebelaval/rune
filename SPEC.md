@@ -2,8 +2,8 @@
 ## Rune
 
 > Last reconciled: 2026-03-18 | Build stage: Stage 9 (Launch Prep) IN PROGRESS
-> Drift status: CURRENT
-> VISION alignment: 42% (5 of 12 pillars realized, 3 partial)
+> Drift status: CURRENT (post-sidebar restructure)
+> VISION alignment: 45% (5 of 12 pillars realized, 3 partial, settings/profile infrastructure complete)
 
 ---
 
@@ -97,42 +97,48 @@ BYOK (Bring Your Own Key) model. Users provide their own Anthropic API key. No m
 - **BookProgress component:** Dashboard showing book completion metrics.
 
 ### UI Components
+- **AppSidebar:** Global left sidebar (Claude.ai pattern) -- Rune logo, Library/Settings nav, New Book button, user profile menu in lower-left. Collapsible to icon rail. Replaces AppHeader for authenticated users.
+- **AppHeader:** Fixed top bar for unauthenticated pages (landing, auth). Rune wordmark + "Sign in" link.
 - **SessionView:** Main session layout with 65/35 split (conversation left, activity right).
 - **MessageArea:** Conversation message display with role-based styling.
 - **ActivityStream:** Real-time panel showing what Rune is doing (filing, connecting, drafting).
 - **QualitySlider:** Three-position slider controlling model routing tier.
-- **AppHeader:** Fixed top bar with Rune wordmark, Library link, profile dropdown.
-- **SessionSidebar:** Collapsible session list on book workspace (left side).
-- **BookWorkspace:** Client component wiring sidebar + session view.
+- **SessionSidebar:** Collapsible session list on book workspace (left side, nested within AppSidebar shell).
+- **BookWorkspace:** Client component wiring session sidebar + session view.
 - **NewBookForm:** Book creation with title, type selection (card UI), quality slider.
+- **Settings tabs:** Profile (display name, avatar), Appearance (theme toggle), API Keys (Anthropic/Deepgram BYOK), Account (info, export, delete).
+- **Dashboard home:** Welcome header, "continue writing" card, quick stats (books, sessions, active).
 
 ### Design System: Claude-Inspired
 - **Light mode default:** Warm cream (`#faf9f5`), clean white cards (`#ffffff`), coral accent (`#d97757`), blue secondary (`#2c84db`).
-- **Dark mode opt-in:** Via `.dark` class. Near-black (`#1a1918`), warm elevated surfaces.
+- **Dark mode:** Via `.dark` class. Near-black (`#1a1918`), warm elevated surfaces. Toggled via Settings > Appearance (light/dark/system). Zustand store + localStorage for instant switching.
 - **Typography:** Source Serif 4 headings (weight 400, tight tracking), Source Sans 3 body, IBM Plex Mono labels.
 - **Background texture:** Dot-grid + radial vignette for subtle depth.
 - **All colors via CSS custom properties** (`var(--rune-*)`). No hardcoded hex.
+- **App shell:** Sidebar-first layout for authenticated users (Claude.ai pattern). Header-only for unauthenticated landing/auth pages.
 
 ### Authentication
-- **Magic link only.** No passwords, no Google OAuth (removed in PR #5).
-- **Supabase Auth:** `signInWithOtp()` + email verification.
+- **Email OTP only.** No passwords, no Google OAuth (removed in PR #5), no magic links.
+- **Supabase Auth:** `signInWithOtp()` sends 6-digit code to email. `verifyOtp()` validates in-app. User stays on same tab.
 - **Lazy client initialization:** Prevents SSR crashes (fix from PR #4).
-- **Auth callback:** `createServerClient` from `@supabase/ssr` with `CookieOptions` type.
+- **Middleware:** Protects `/book/*` and `/settings` routes. Refreshes session via `getUser()` (server-side, not JWT-only).
+- **Profile auto-create:** Supabase trigger creates `profiles` row on signup with display name inferred from email.
 
 ### Database Schema (Supabase)
-8 tables with RLS policies:
+9 tables with RLS policies:
 - `books` -- Title, type (memoir/fiction/nonfiction), quality tier, user ownership
 - `sessions` -- Per-book conversation sessions
-- `messages` -- Conversation messages (user + assistant)
-- `notes` -- Workspace items filed into Three Rooms categories
-- `entities` -- Knowledge graph nodes (person/place/theme/event)
-- `relationships` -- Knowledge graph edges between entities
+- `workspace_files` -- Three Rooms content (brainstorm/drafts/publish)
+- `knowledge_entities` -- Knowledge graph nodes (person/place/theme/event)
+- `entity_relationships` -- Knowledge graph edges between entities
+- `knowledge_files` -- Hierarchical KB (v2, scoped, versioned, 13 file types)
 - `timeline_events` -- Fuzzy-dated events linked to entities and chapters
 - `backlog_items` -- Auto-generated work items with priority scoring
+- `profiles` -- User display name, avatar, theme preference, API keys (JSONB). Auto-created on signup via trigger.
 
-RLS ownership cascade: all child tables filter through `book_id IN (SELECT id FROM books WHERE user_id = auth.uid())`.
+RLS ownership cascade: all child tables filter through `book_id IN (SELECT id FROM books WHERE user_id = auth.uid())`. Profiles filter on `auth.uid() = id`.
 
-3 SQL migrations ready (schema, RLS policies, revisions table).
+7 SQL migrations applied to rune-prod.
 
 ### Infrastructure (DEPLOYED)
 - **Vercel:** Live at `rune-two.vercel.app`. Production builds passing.
