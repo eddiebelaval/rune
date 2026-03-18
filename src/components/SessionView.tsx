@@ -7,6 +7,8 @@ import type { BookType, QualityLevel } from '@/types/database';
 import MessageArea from '@/components/MessageArea';
 import VoiceInput from '@/components/VoiceInput';
 import ActivityStream from '@/components/ActivityStream';
+import SamPresenceRing from '@/components/SamPresenceRing';
+import SamChatPeek from '@/components/SamChatPeek';
 
 // ---------------------------------------------------------------------------
 // SessionView — Main writing session: conversation + activity sidebar
@@ -33,6 +35,12 @@ export default function SessionView({
       className="flex h-full"
       style={{ backgroundColor: 'var(--rune-bg)' }}
     >
+      <SamPresenceRing active={isLoading} />
+      <SamChatPeek
+        messages={messages
+          .filter((m) => m.role === 'assistant')
+          .map((m) => ({ id: m.id, content: m.content, timestamp: m.timestamp }))}
+      />
       {/* LEFT panel — Conversation (65%) */}
       <div
         className="flex flex-col"
