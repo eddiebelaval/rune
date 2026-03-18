@@ -112,7 +112,7 @@ export default function PrivacyPage() {
             'Email address -- used for sign-in (one-time passcode, no passwords stored).',
             'Display name -- optional, shown in your profile.',
             'Theme preference -- light, dark, or system.',
-            'API keys (if you bring your own) -- stored encrypted in your profile, used only for your sessions.',
+            'Usage data -- subscription status and feature usage for service delivery. No content is analyzed.',
           ]}
         />
 
@@ -161,7 +161,7 @@ export default function PrivacyPage() {
         />
         <Paragraph>
           If you self-host Rune, you control which services your data touches.
-          Bring your own API keys and your own infrastructure.
+          Provide your own API keys and your own infrastructure.
         </Paragraph>
 
         <SectionHeading>Data deletion</SectionHeading>
