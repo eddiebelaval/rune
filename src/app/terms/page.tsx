@@ -149,23 +149,26 @@ export default function TermsPage() {
         <BulletList
           items={[
             'You are responsible for the content you create. Don\'t use Rune to produce content that infringes on others\' intellectual property.',
-            'You are responsible for your API keys if you bring your own. Keep them secure.',
+            'If you self-host with your own API keys, you are responsible for keeping them secure.',
             'Don\'t attempt to access other users\' data or circumvent security protections.',
             'Don\'t use Rune to generate harmful, illegal, or deceptive content.',
           ]}
         />
 
-        <SectionHeading>The BYOK model</SectionHeading>
+        <SectionHeading>Subscription and pricing</SectionHeading>
         <Paragraph>
-          Rune uses a Bring Your Own Key (BYOK) model. You provide your own
-          Anthropic API key and Deepgram API key. This means:
+          Rune is a subscription service. Your subscription includes all AI
+          features &mdash; conversation with Sam, voice transcription,
+          knowledge base management, and manuscript assembly. There are no
+          hidden API costs or per-token charges. You pay one price, Sam does
+          the rest.
         </Paragraph>
         <BulletList
           items={[
-            'You pay Anthropic and Deepgram directly for usage. Rune does not mark up or resell API access.',
-            'Your API keys are stored in your profile and used only for your sessions.',
-            'You can revoke your keys at any time by removing them from Settings.',
-            'If you self-host, your keys never touch our servers at all.',
+            'AI costs (Claude, Deepgram) are included in your subscription. No additional charges.',
+            'Subscription details and pricing are shown at signup and in your account settings.',
+            'You can cancel at any time. Your data remains accessible for export after cancellation.',
+            'If you self-host Rune (open source, MIT), you provide your own API keys and pay providers directly.',
           ]}
         />
 

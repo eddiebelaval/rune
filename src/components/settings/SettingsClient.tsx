@@ -4,19 +4,17 @@ import { useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import ProfileTab from './ProfileTab';
 import AppearanceTab from './AppearanceTab';
-import ApiKeysTab from './ApiKeysTab';
 import AccountTab from './AccountTab';
 
 interface SettingsClientProps {
   user: User;
 }
 
-type SettingsTab = 'profile' | 'appearance' | 'api-keys' | 'account';
+type SettingsTab = 'profile' | 'appearance' | 'account';
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: 'profile', label: 'Profile' },
   { id: 'appearance', label: 'Appearance' },
-  { id: 'api-keys', label: 'API Keys' },
   { id: 'account', label: 'Account' },
 ];
 
@@ -56,7 +54,6 @@ export default function SettingsClient({ user }: SettingsClientProps) {
         <div>
           {activeTab === 'profile' && <ProfileTab user={user} />}
           {activeTab === 'appearance' && <AppearanceTab />}
-          {activeTab === 'api-keys' && <ApiKeysTab />}
           {activeTab === 'account' && <AccountTab user={user} />}
         </div>
       </div>
