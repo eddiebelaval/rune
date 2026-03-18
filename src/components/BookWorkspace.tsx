@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import type { Book } from '@/types/database';
+import type { PipelineStage } from '@/types/knowledge';
 import SessionSidebar from '@/components/SessionSidebar';
 import SessionView from '@/components/SessionView';
 import { createClient } from '@/lib/supabase-browser';
@@ -80,6 +81,40 @@ export default function BookWorkspace({ book, initialSessionId }: BookWorkspaceP
           <span className="label-mono rounded-sm border border-rune-border bg-rune-elevated px-2 py-0.5">
             {book.book_type}
           </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {(['world-building', 'story-writing', 'publishing'] as const).map((stage, i) => {
+            const pipelineStage = ((book as Book & { pipeline_stage?: PipelineStage }).pipeline_stage ?? 'world-building') as PipelineStage;
+            const stageLabels: Record<PipelineStage, string> = {
+              'world-building': 'Workshop',
+              'story-writing': 'Study',
+              'publishing': 'Press',
+            };
+            const stageOrder: PipelineStage[] = ['world-building', 'story-writing', 'publishing'];
+            const currentIdx = stageOrder.indexOf(pipelineStage);
+            const isActive = stage === pipelineStage;
+            const isPast = i < currentIdx;
+            return (
+              <div key={stage} className="flex items-center gap-2">
+                {i > 0 && (
+                  <div
+                    className="h-px w-4"
+                    style={{ background: isPast ? 'var(--rune-teal)' : 'var(--rune-border)' }}
+                  />
+                )}
+                <span
+                  className="font-mono text-[10px] uppercase tracking-wider px-2 py-1 rounded"
+                  style={{
+                    background: isActive ? 'color-mix(in srgb, var(--rune-gold) 15%, transparent)' : isPast ? 'color-mix(in srgb, var(--rune-teal) 10%, transparent)' : 'transparent',
+                    color: isActive ? 'var(--rune-gold)' : isPast ? 'var(--rune-teal)' : 'var(--rune-muted)',
+                    border: isActive ? '1px solid color-mix(in srgb, var(--rune-gold) 25%, transparent)' : '1px solid transparent',
+                  }}
+                >
+                  {stageLabels[stage]}
+                </span>
+              </div>
+            );
+          })}
         </div>
       </div>
 
