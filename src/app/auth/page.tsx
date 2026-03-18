@@ -126,7 +126,7 @@ export default function AuthPage() {
         {(status === 'code' || status === 'verifying') && (
           <form onSubmit={handleVerifyCode}>
             <label htmlFor="otp" className="label-mono mb-2 block">
-              6-digit code
+              Sign-in code
             </label>
             <input
               id="otp"
