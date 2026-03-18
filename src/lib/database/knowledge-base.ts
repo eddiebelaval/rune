@@ -25,7 +25,7 @@ function getDb() {
  * Strips characters that have meaning in PostgREST filter syntax.
  */
 function sanitizeSearchQuery(query: string): string {
-  return query.replace(/[,().'"%\\]/g, '').trim()
+  return query.replace(/[,().'"%\\\\_]/g, '').trim()
 }
 
 export class KnowledgeBaseService {
