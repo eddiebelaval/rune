@@ -48,7 +48,7 @@ export default function BookWorkspace({ book, initialSessionId }: BookWorkspaceP
   }, [book.id]);
 
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] flex-col">
+    <div className="flex h-dvh flex-col">
       {/* Book header bar */}
       <div
         className="flex shrink-0 items-center justify-between border-b border-rune-border bg-rune-surface px-6 py-3"

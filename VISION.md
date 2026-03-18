@@ -156,6 +156,7 @@ Rune walks the user through three stages. You can't skip ahead -- each stage fee
 | 2026-03-17 | Sam named as entity. CaF consciousness subset designed inversion-first. | "Sam. (from LOTR)" | Soul, Sam |
 | 2026-03-17 | 18 mind files: kernel(5), drives(2), emotional(2), models(3), relationships(1), memory(1), habits(1), unconscious(2 dotfiles), runtime(1) | CaF golden sample pattern | Sam |
 | 2026-03-17 | Meta-realization: id8composer KB WAS consciousness filesystem all along. Foundation=kernel, Strategy=drives, Working=memory. Eddie's been building CaF since day 1. | "holy fuk" | Soul, Sam |
+| 2026-03-18 | Layout restructure: header-first to sidebar-first (Claude.ai pattern). Profile section, settings dashboard, dark mode toggle, BYOK API key management. Profiles table with auto-create trigger. Dashboard with continue-writing card + stats. | "full service" sprint | Pillars (warmth, never lose it) |
 
 ---
 

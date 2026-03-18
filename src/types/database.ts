@@ -6,6 +6,24 @@ export type Room = 'brainstorm' | 'drafts' | 'publish';
 export type EntityType = 'person' | 'place' | 'theme' | 'event';
 export type BacklogItemType = 'question' | 'contradiction' | 'thin_spot' | 'unexplored' | 'review' | 'idea';
 export type BacklogStatus = 'open' | 'addressed' | 'dismissed';
+export type ThemeMode = 'light' | 'dark' | 'system';
+
+export interface UserPreferences {
+  anthropic_api_key?: string;
+  deepgram_api_key?: string;
+  default_quality_level?: QualityLevel;
+  sidebar_collapsed?: boolean;
+}
+
+export interface Profile {
+  id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  theme: ThemeMode;
+  preferences: UserPreferences;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface Book {
   id: string;

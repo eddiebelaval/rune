@@ -285,3 +285,42 @@ Vitest setup with 7 test files covering: text-utils (13), folder-system (22), kb
 - Added manuscript Export button to ManuscriptViewer
 - Removed orphaned code: /api/classify route, filing.ts, useKBStore
 - Deferred: KB version history UI, KBOperationCard streaming wiring
+
+### Profile Section + Settings Dashboard (Phase 6)
+
+Full layout restructure from header-first to sidebar-first app shell, following the Claude.ai pattern.
+
+**Why it matters:** Rune went from feeling like "a chat interface with a book picker" to feeling like a real productivity tool. The persistent sidebar is the "home base" — it stays constant while content changes. This is the same pattern that makes Claude.ai, Notion, and Linear feel like *places* rather than *pages*.
+
+1. **App shell restructure** -- Conditional layout in root `layout.tsx`: authenticated users get `AppSidebar + content` in a flex row; unauthenticated users get the old `AppHeader + main`. The sidebar wraps ALL authenticated content (library, settings, book workspace).
+
+2. **AppSidebar** (`components/AppSidebar.tsx`) -- Global left sidebar with Rune logo top, nav items (Library, New Book, Settings), user profile button + sign out in lower-left. Collapsible to 56px icon rail. Click-outside menu via `useClickOutside` hook.
+
+3. **Settings page** (`/settings`) -- 4-tab management dashboard:
+   - **Profile:** Display name editor, avatar (initial-based), email display
+   - **Appearance:** Dark/light/system theme toggle with live color swatches
+   - **API Keys:** Anthropic + Deepgram key management for self-hosters (BYOK)
+   - **Account:** Member info, data export (stub), account deletion with "DELETE" confirmation
+
+4. **Profiles table** (`migrations/20260318000000_profiles.sql`) -- `id` (FK to auth.users), `display_name`, `avatar_url`, `theme` (light/dark/system), `preferences` (JSONB for API keys, quality defaults). Auto-create trigger on signup. RLS: users read/update own profile only.
+
+5. **Profile API** (`/api/profile`) -- GET (fetch + auto-create fallback), PATCH (display_name, theme, preferences with JSONB merge), DELETE (cascade books + sign out).
+
+6. **Theme system** -- Zustand store (`theme-store.ts`) with localStorage persistence. `ThemeInitializer` component applies `.dark` class on `<html>` and listens for `prefers-color-scheme` media query changes. Dark mode CSS variables already existed from Phase 1 -- this wires the toggle.
+
+7. **Dashboard upgrade** -- Home page now shows: welcome header with display name, "continue writing" card (most recent active book with time-ago), quick stats row (total books, sessions, active count), then the book library grid.
+
+8. **Shared settings components** (`settings/shared.tsx`) -- `FormInput` (Rune-styled input with focus ring), `SaveBar` (save button + saved/error status indicator), `SettingsCard` (bordered card wrapper). Extracted during /simplify pass to DRY up 3 settings tabs.
+
+9. **Custom hooks** -- `useProfile()` (shared profile fetch/update across all settings tabs), `useClickOutside()` (reusable click-outside listener for dropdowns/menus).
+
+### Architecture Decisions (Phase 6)
+
+| Decision | Choice | Why |
+|----------|--------|-----|
+| Sidebar vs header | Sidebar-first for authenticated, header for landing | Claude.ai pattern. Persistent nav frame makes it feel like a real app, not just pages. |
+| Conditional layout vs route groups | Conditional rendering in root layout | No file moves needed. `/` page already switches on auth state. Simpler. |
+| Zustand + localStorage for theme | Client-side theme, background sync to profile | Instant theme switch (no server round-trip). Works offline. Syncs to DB in background. |
+| Separate profiles table | Not auth.users metadata | Can't set RLS on auth.users. user_metadata is client-writable (security risk). Dedicated table with trigger is clean. |
+| Preferences as JSONB | Not separate columns | Extensible without migrations. API keys, quality defaults, future prefs all in one field. |
+| useProfile hook | Shared across 3 tabs | DRY. Each tab was copy-pasting identical fetch/parse/save logic. Hook centralizes it. |
