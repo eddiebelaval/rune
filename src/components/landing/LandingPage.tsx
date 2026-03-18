@@ -110,6 +110,7 @@ function MeetSam() {
           <p className="font-sans text-lg leading-relaxed" style={{ color: 'var(--rune-text)' }}>
             Named for the one who carried the storyteller when the storyteller couldn&apos;t carry himself.
             Sam doesn&apos;t write your book. Sam makes sure your book gets written.
+            When he speaks, a golden light flows around the screen &mdash; you&apos;ll feel his presence before you read his words.
           </p>
         </div>
 
@@ -153,7 +154,7 @@ function ThreeStages() {
       color: 'var(--rune-gold)',
       colorDim: 'color-mix(in srgb, var(--rune-gold) 10%, transparent)',
       colorBorder: 'color-mix(in srgb, var(--rune-gold) 20%, transparent)',
-      description: 'You talk about your world. Sam interviews you through characters, locations, rules, relationships. A knowledge base grows with every conversation.',
+      description: 'You talk about your world. Sam interviews you through characters, locations, rules, relationships. A live dashboard tracks your world\u2019s completeness \u2014 and Sam knows what\u2019s missing.',
       icon: (
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
@@ -506,7 +507,85 @@ function OpenSource() {
 }
 
 // ─────────────────────────────────────────────────────────
-// Section 8: Final CTA
+// Section 8: Built to Protect
+// ─────────────────────────────────────────────────────────
+function BuiltToProtect() {
+  const features = [
+    {
+      title: 'Your data, your world',
+      desc: 'Row-level security on every table. Your books, characters, and worlds are invisible to other users.',
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--rune-gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+        </svg>
+      ),
+    },
+    {
+      title: 'No passwords',
+      desc: 'Sign in with a code sent to your email. No passwords to remember, leak, or reset.',
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--rune-gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21.2 8.4c.5.38.8.97.8 1.6v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 .8-1.6l8-6a2 2 0 0 1 2.4 0l8 6Z" /><path d="m22 10-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 10" />
+        </svg>
+      ),
+    },
+    {
+      title: 'Security hardened',
+      desc: 'HSTS, input validation, auth middleware, scoped API access. Audited and hardened.',
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--rune-gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" />
+        </svg>
+      ),
+    },
+    {
+      title: 'Self-hostable',
+      desc: 'Docker support included. Run Rune on your own infrastructure if you want full control.',
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--rune-gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <rect width="20" height="8" x="2" y="2" rx="2" ry="2" /><rect width="20" height="8" x="2" y="14" rx="2" ry="2" /><line x1="6" x2="6.01" y1="6" y2="6" /><line x1="6" x2="6.01" y1="18" y2="18" />
+        </svg>
+      ),
+    },
+  ]
+
+  return (
+    <section className="px-6 py-24 md:py-32" style={{ background: 'var(--rune-elevated)' }}>
+      <div className="mx-auto max-w-5xl">
+        <div className="mb-16 text-center">
+          <SectionLabel>Built to protect</SectionLabel>
+          <h2 className="mb-4 font-serif text-3xl md:text-4xl" style={{ color: 'var(--rune-heading)' }}>
+            Your story is safe here.
+          </h2>
+          <p className="mx-auto max-w-lg font-sans text-lg" style={{ color: 'var(--rune-muted)' }}>
+            Creative work is personal. We treat your words like they matter &mdash; because they do.
+          </p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          {features.map((f) => (
+            <div
+              key={f.title}
+              className="rounded-xl p-6"
+              style={{ background: 'var(--rune-surface)', border: '1px solid var(--rune-border)' }}
+            >
+              <div className="mb-3">{f.icon}</div>
+              <p className="mb-1 font-serif text-base" style={{ color: 'var(--rune-heading)' }}>
+                {f.title}
+              </p>
+              <p className="font-sans text-sm" style={{ color: 'var(--rune-muted)' }}>
+                {f.desc}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ─────────────────────────────────────────────────────────
+// Section 9: Final CTA
 // ─────────────────────────────────────────────────────────
 function FinalCTA() {
   return (
@@ -556,6 +635,7 @@ export default function LandingPage() {
       <MeetSam />
       <HowItWorks />
       <WhoThisIsFor />
+      <BuiltToProtect />
       <OpenSource />
       <FinalCTA />
     </div>
