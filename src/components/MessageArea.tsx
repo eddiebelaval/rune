@@ -11,6 +11,7 @@ interface MessageAreaProps {
   messages: ConversationMessage[];
   isLoading: boolean;
   bookId?: string;
+  bookTitle?: string;
   onSend?: (message: string) => void;
 }
 
@@ -53,7 +54,8 @@ function KeyboardIcon() {
   );
 }
 
-function EmptyState({ bookId, onSend }: { bookId?: string; onSend?: (message: string) => void }) {
+function EmptyState({ bookId, bookTitle, onSend }: { bookId?: string; bookTitle?: string; onSend?: (message: string) => void }) {
+  const isOnboarding = bookTitle === 'Untitled';
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importStatus, setImportStatus] = useState<'idle' | 'uploading' | 'done'>('idle');
 
@@ -97,7 +99,7 @@ function EmptyState({ bookId, onSend }: { bookId?: string; onSend?: (message: st
               fontFamily: 'var(--font-heading, "Source Serif 4", serif)',
             }}
           >
-            Ready when you are
+            {isOnboarding ? 'Meet Sam' : 'Ready when you are'}
           </p>
           <p
             className="text-sm"
@@ -106,7 +108,9 @@ function EmptyState({ bookId, onSend }: { bookId?: string; onSend?: (message: st
               fontFamily: 'var(--font-body, "Source Sans 3", sans-serif)',
             }}
           >
-            Start talking or bring in what you already have
+            {isOnboarding
+              ? 'Your scribe is here. Start talking and Sam will set everything up.'
+              : 'Start talking or bring in what you already have'}
           </p>
         </div>
 
@@ -125,10 +129,10 @@ function EmptyState({ bookId, onSend }: { bookId?: string; onSend?: (message: st
             <span style={{ color: 'var(--rune-gold)' }}><MicIcon /></span>
             <div>
               <span className="text-sm block" style={{ color: 'var(--rune-heading)' }}>
-                Start talking to Sam
+                {isOnboarding ? 'Meet Sam' : 'Start talking to Sam'}
               </span>
               <span className="text-xs" style={{ color: 'var(--rune-muted)' }}>
-                Voice or text — Sam will guide you
+                {isOnboarding ? 'Sam will introduce himself and set up your book' : 'Voice or text — Sam will guide you'}
               </span>
             </div>
           </button>
@@ -182,7 +186,7 @@ function EmptyState({ bookId, onSend }: { bookId?: string; onSend?: (message: st
   );
 }
 
-export default function MessageArea({ messages, isLoading, bookId, onSend }: MessageAreaProps) {
+export default function MessageArea({ messages, isLoading, bookId, bookTitle, onSend }: MessageAreaProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when messages change
@@ -192,7 +196,7 @@ export default function MessageArea({ messages, isLoading, bookId, onSend }: Mes
 
   // Empty state
   if (messages.length === 0 && !isLoading) {
-    return <EmptyState bookId={bookId} onSend={onSend} />;
+    return <EmptyState bookId={bookId} bookTitle={bookTitle} onSend={onSend} />;
   }
 
   return (

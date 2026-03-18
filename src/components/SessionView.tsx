@@ -25,6 +25,7 @@ interface SessionViewProps {
 export default function SessionView({
   bookId,
   sessionId,
+  title,
 }: SessionViewProps) {
   const { messages, sendMessage, isLoading } = useSession(bookId, sessionId);
   const { rooms } = useWorkspace(bookId);
@@ -50,7 +51,7 @@ export default function SessionView({
         }}
       >
         {/* Message area (fills remaining space) */}
-        <MessageArea messages={messages} isLoading={isLoading} bookId={bookId} onSend={sendMessage} />
+        <MessageArea messages={messages} isLoading={isLoading} bookId={bookId} bookTitle={title} onSend={sendMessage} />
 
         {/* Voice input bar (fixed at bottom) */}
         <div

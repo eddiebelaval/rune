@@ -1,5 +1,7 @@
 import { createServerClient } from "@/lib/supabase";
-import type { Book } from "@/types/database";
+import { initializeWorkspace } from "@/lib/workspace";
+import type { Book, BookType } from "@/types/database";
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import AppFooter from "@/components/AppFooter";
 import BookCardMenu from "@/components/BookCardMenu";
@@ -184,6 +186,36 @@ export default async function Home() {
     .order("updated_at", { ascending: false });
 
   const books = (booksData as Book[]) ?? [];
+
+  // NEW USER: No books yet — auto-create a draft book and redirect to Sam
+  // Sam will handle onboarding, detect book type, and update the title/type
+  // through natural conversation using concierge tools.
+  if (books.length === 0) {
+    const { data: draftBook } = await supabase
+      .from("books")
+      .insert({
+        user_id: user.id,
+        title: "Untitled",
+        book_type: "fiction" as BookType,
+        quality_level: "standard",
+        status: "active",
+        pipeline_stage: "world-building",
+      })
+      .select()
+      .single();
+
+    if (draftBook) {
+      // Initialize workspace and redirect — Sam takes it from here
+      try {
+        await initializeWorkspace(draftBook.id, "fiction" as BookType);
+      } catch {
+        // Non-fatal — workspace init can be retried
+      }
+      redirect(`/book/${draftBook.id}`);
+    }
+    // If book creation fails, fall through to show the empty state
+  }
+
   const bookIds = books.map((b) => b.id);
 
   const { count: sessionCount } = bookIds.length > 0
