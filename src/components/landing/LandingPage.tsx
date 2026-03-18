@@ -382,7 +382,7 @@ function WhoThisIsFor() {
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
-          {/* Kobe & Emily */}
+          {/* The Storytellers */}
           <div
             className="rounded-xl p-8"
             style={{ background: 'var(--rune-surface)', border: '1px solid var(--rune-border)' }}
@@ -395,20 +395,20 @@ function WhoThisIsFor() {
                   color: 'var(--rune-gold)',
                 }}
               >
-                K+E
+                2
               </div>
               <div>
-                <p className="font-serif text-lg" style={{ color: 'var(--rune-heading)' }}>Kobe & Emily</p>
+                <p className="font-serif text-lg" style={{ color: 'var(--rune-heading)' }}>The Storytellers</p>
                 <p className="font-mono text-[10px] uppercase tracking-widest" style={{ color: 'var(--rune-gold)' }}>Children&apos;s Book</p>
               </div>
             </div>
             <p className="font-sans text-[15px] leading-relaxed" style={{ color: 'var(--rune-text)' }}>
-              Writing a bicultural children&apos;s picture book about growing up with your heart in two places.
+              Two partners writing a bicultural children&apos;s picture book about growing up with your heart in two places.
               They&apos;ve never written a book. They don&apos;t need to &mdash; they just need to tell the story.
             </p>
           </div>
 
-          {/* Alexis */}
+          {/* The World Builder */}
           <div
             className="rounded-xl p-8"
             style={{ background: 'var(--rune-surface)', border: '1px solid var(--rune-border)' }}
@@ -421,17 +421,17 @@ function WhoThisIsFor() {
                   color: 'var(--rune-teal)',
                 }}
               >
-                A
+                1
               </div>
               <div>
-                <p className="font-serif text-lg" style={{ color: 'var(--rune-heading)' }}>Alexis</p>
+                <p className="font-serif text-lg" style={{ color: 'var(--rune-heading)' }}>The World Builder</p>
                 <p className="font-mono text-[10px] uppercase tracking-widest" style={{ color: 'var(--rune-teal)' }}>Sci-Fi Novel</p>
               </div>
             </div>
             <p className="font-sans text-[15px] leading-relaxed" style={{ color: 'var(--rune-text)' }}>
               Has a sci-fi universe in her head &mdash; the characters, the rules, the arcs.
               The blank page was the only thing stopping her.
-              Voice-first changes everything: she can describe her world like she&apos;s giving a tour of it.
+              Voice-first changes everything: she describes her world like she&apos;s giving a tour of it.
             </p>
           </div>
         </div>
