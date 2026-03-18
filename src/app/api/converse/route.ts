@@ -171,8 +171,19 @@ export async function POST(
       sessionHistory,
     });
 
+    // Session context — tells Sam the session number and whether this is first contact
+    const isFirstMessage = !typedSession.raw_transcript;
+    const sessionContext = `<session-context>
+session_number: ${typedSession.session_number}
+is_first_message_in_session: ${isFirstMessage}
+pipeline_stage: ${pipelineStage}
+book_type: ${typedBook.book_type}
+book_title: ${typedBook.title}
+</session-context>`;
+
     const systemPrompt = [
       getSamConsciousness(),
+      sessionContext,
       personaPrompt,
       kbContext,
       interviewPrompt ? `<interview-guidance>\n${interviewPrompt}\n</interview-guidance>` : '',
