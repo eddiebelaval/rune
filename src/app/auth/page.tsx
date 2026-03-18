@@ -1,22 +1,25 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase-browser';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import AppFooter from '@/components/AppFooter';
 
 export default function AuthPage() {
   const [email, setEmail] = useState('');
-  const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [otp, setOtp] = useState('');
+  const [status, setStatus] = useState<'idle' | 'sending' | 'code' | 'verifying' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
   const clientRef = useRef<SupabaseClient | null>(null);
+  const router = useRouter();
 
   function getClient() {
     if (!clientRef.current) clientRef.current = createClient();
     return clientRef.current;
   }
 
-  async function handleMagicLink(e: React.FormEvent) {
+  async function handleSendCode(e: React.FormEvent) {
     e.preventDefault();
     if (!email.trim()) return;
 
@@ -25,16 +28,35 @@ export default function AuthPage() {
 
     const { error } = await getClient().auth.signInWithOtp({
       email: email.trim(),
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
     });
 
     if (error) {
       setStatus('error');
       setErrorMsg(error.message);
     } else {
-      setStatus('sent');
+      setStatus('code');
+    }
+  }
+
+  async function handleVerifyCode(e: React.FormEvent) {
+    e.preventDefault();
+    if (!otp.trim()) return;
+
+    setStatus('verifying');
+    setErrorMsg('');
+
+    const { error } = await getClient().auth.verifyOtp({
+      email: email.trim(),
+      token: otp.trim(),
+      type: 'email',
+    });
+
+    if (error) {
+      setStatus('error');
+      setErrorMsg(error.message);
+    } else {
+      router.push('/');
+      router.refresh();
     }
   }
 
@@ -58,47 +80,15 @@ export default function AuthPage() {
           className="mb-8 text-center text-sm"
           style={{ color: 'var(--rune-muted)' }}
         >
-          Sign in to start writing your book.
+          {status === 'code' || status === 'verifying'
+            ? `Enter the code sent to ${email}`
+            : 'Sign in to start writing your book.'}
         </p>
 
-        {/* Magic Link */}
-        {status === 'sent' ? (
-          <div
-            className="rounded-lg border px-4 py-6 text-center"
-            style={{
-              backgroundColor: 'color-mix(in srgb, var(--rune-teal) 8%, transparent)',
-              borderColor: 'var(--rune-teal)',
-            }}
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1.5}
-              stroke="currentColor"
-              className="mx-auto mb-3 h-8 w-8"
-              style={{ color: 'var(--rune-teal)' }}
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75"
-              />
-            </svg>
-            <p className="mb-1 font-serif text-base" style={{ color: 'var(--rune-heading)' }}>
-              Check your email
-            </p>
-            <p className="text-sm" style={{ color: 'var(--rune-muted)' }}>
-              We sent a sign-in link to <strong style={{ color: 'var(--rune-text)' }}>{email}</strong>
-            </p>
-          </div>
-        ) : (
-          <form onSubmit={handleMagicLink}>
-            <label
-              htmlFor="email"
-              className="label-mono mb-2 block"
-            >
+        {/* Step 1: Email input */}
+        {(status === 'idle' || status === 'sending') && (
+          <form onSubmit={handleSendCode}>
+            <label htmlFor="email" className="label-mono mb-2 block">
               Email
             </label>
             <input
@@ -108,6 +98,7 @@ export default function AuthPage() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
               required
+              autoFocus
               className="mb-4 w-full rounded-lg border px-4 py-3 text-sm transition-colors duration-200 placeholder:opacity-40 focus:outline-none"
               style={{
                 backgroundColor: 'var(--rune-bg)',
@@ -118,7 +109,7 @@ export default function AuthPage() {
             <button
               type="submit"
               disabled={status === 'sending'}
-              className="w-full rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200"
+              className="w-full rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200 cursor-pointer"
               style={{
                 backgroundColor: 'var(--rune-gold)',
                 color: 'var(--rune-bg)',
@@ -126,19 +117,78 @@ export default function AuthPage() {
                 opacity: status === 'sending' ? 0.7 : 1,
               }}
             >
-              {status === 'sending' ? 'Sending...' : 'Send magic link'}
+              {status === 'sending' ? 'Sending code...' : 'Send sign-in code'}
+            </button>
+          </form>
+        )}
+
+        {/* Step 2: OTP code input */}
+        {(status === 'code' || status === 'verifying') && (
+          <form onSubmit={handleVerifyCode}>
+            <label htmlFor="otp" className="label-mono mb-2 block">
+              6-digit code
+            </label>
+            <input
+              id="otp"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={6}
+              value={otp}
+              onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+              placeholder="000000"
+              required
+              autoFocus
+              className="mb-4 w-full rounded-lg border px-4 py-3 text-center text-2xl font-mono tracking-[0.3em] transition-colors duration-200 placeholder:opacity-20 focus:outline-none"
+              style={{
+                backgroundColor: 'var(--rune-bg)',
+                borderColor: 'var(--rune-border)',
+                color: 'var(--rune-heading)',
+                letterSpacing: '0.3em',
+              }}
+            />
+            <button
+              type="submit"
+              disabled={status === 'verifying' || otp.length < 6}
+              className="w-full rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200 cursor-pointer"
+              style={{
+                backgroundColor: 'var(--rune-gold)',
+                color: 'var(--rune-bg)',
+                cursor: status === 'verifying' ? 'wait' : 'pointer',
+                opacity: status === 'verifying' || otp.length < 6 ? 0.7 : 1,
+              }}
+            >
+              {status === 'verifying' ? 'Verifying...' : 'Sign in'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setStatus('idle'); setOtp(''); setErrorMsg(''); }}
+              className="mt-3 w-full text-center text-sm cursor-pointer"
+              style={{ color: 'var(--rune-muted)' }}
+            >
+              Use a different email
             </button>
           </form>
         )}
 
         {/* Error */}
         {status === 'error' && errorMsg && (
-          <p
-            className="mt-4 text-center text-sm"
-            style={{ color: 'var(--rune-gold)' }}
-          >
-            {errorMsg}
-          </p>
+          <div className="mt-4">
+            <p
+              className="mb-3 text-center text-sm"
+              style={{ color: 'var(--rune-error, var(--rune-gold))' }}
+            >
+              {errorMsg}
+            </p>
+            <button
+              type="button"
+              onClick={() => { setStatus('idle'); setOtp(''); setErrorMsg(''); }}
+              className="w-full text-center text-sm cursor-pointer"
+              style={{ color: 'var(--rune-muted)' }}
+            >
+              Try again
+            </button>
+          </div>
         )}
       </div>
     </div>
