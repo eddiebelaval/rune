@@ -146,8 +146,9 @@ export async function routeImport(
   const routed: RoutedSection[] = []
   const fallback: RoutedSection[] = []
 
-  for (const section of sections) {
-    const classification = classifications.find((c) => c.index === sections.indexOf(section))
+  for (let i = 0; i < sections.length; i++) {
+    const section = sections[i]
+    const classification = classifications.find((c) => c.index === i)
 
     const room: Room = classification?.room ?? 'brainstorm'
     const category = classification?.category ?? 'raw-sessions'
@@ -263,7 +264,7 @@ async function classifyBatch(
 
     // Adjust indices for batching and validate
     return parsed
-      .filter((c) => typeof c.index === 'number' && c.room && c.category)
+      .filter((c) => typeof c.index === 'number' && c.index >= 0 && c.index < sections.length && c.room && c.category)
       .map((c) => ({
         ...c,
         index: c.index + indexOffset,

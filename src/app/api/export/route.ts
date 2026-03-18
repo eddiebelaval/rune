@@ -133,12 +133,12 @@ async function exportManuscript(
   const markdown = [
     `# ${book.title}`,
     '',
-    ...manuscript.chapters.map((ch) => [
+    ...manuscript.chapters.flatMap((ch) => [
       `## ${ch.title}`,
       '',
       ch.content,
       '',
-    ]).flat(),
+    ]),
     '---',
     `${manuscript.stats.wordCount} words | ${manuscript.stats.chapterCount} chapters | ~${manuscript.stats.estimatedPages} pages`,
   ].join('\n');

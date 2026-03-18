@@ -497,6 +497,13 @@ async function handleUpdateProfile(
 
 // ── Import / Export ─────────────────────────────────────────
 
+/** Count total files across all rooms in a workspace structure. */
+function countWorkspaceFiles(structure: Awaited<ReturnType<typeof getWorkspaceStructure>>): number {
+  return Object.values(structure.rooms).reduce(
+    (sum, cats) => sum + Object.values(cats).reduce((s, files) => s + files.length, 0), 0,
+  )
+}
+
 async function handleImportText(
   args: Record<string, unknown>,
   userId: string,
@@ -586,9 +593,7 @@ async function handleExportBook(
 
     if (format === 'workspace') {
       const structure = await getWorkspaceStructure(bookId)
-      const fileCount = Object.values(structure.rooms).reduce(
-        (sum, cats) => sum + Object.values(cats).reduce((s, files) => s + files.length, 0), 0,
-      )
+      const fileCount = countWorkspaceFiles(structure)
       return {
         success: true,
         data: {
@@ -600,12 +605,21 @@ async function handleExportBook(
       }
     }
 
+    if (format === 'kb') {
+      return {
+        success: true,
+        data: {
+          format: 'kb',
+          downloadUrl: `/api/export?book_id=${bookId}&format=kb`,
+          message: `Knowledge base export for "${book.title}". Download from the export link.`,
+        },
+      }
+    }
+
     // Default: full export summary
     const manuscript = await assembleManuscript(bookId)
     const structure = await getWorkspaceStructure(bookId)
-    const fileCount = Object.values(structure.rooms).reduce(
-      (sum, cats) => sum + Object.values(cats).reduce((s, files) => s + files.length, 0), 0,
-    )
+    const fileCount = countWorkspaceFiles(structure)
 
     return {
       success: true,
