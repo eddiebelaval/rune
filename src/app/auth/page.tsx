@@ -133,10 +133,10 @@ export default function AuthPage() {
               type="text"
               inputMode="numeric"
               pattern="[0-9]*"
-              maxLength={8}
+              maxLength={6}
               value={otp}
               onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-              placeholder="00000000"
+              placeholder="000000"
               required
               autoFocus
               className="mb-4 w-full rounded-lg border px-4 py-3 text-center text-2xl font-mono tracking-[0.3em] transition-colors duration-200 placeholder:opacity-20 focus:outline-none"
