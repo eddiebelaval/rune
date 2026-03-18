@@ -158,7 +158,7 @@ export default function ManuscriptViewer({ bookId }: ManuscriptViewerProps) {
       >
         {/* Sidebar header */}
         <div
-          className="px-4 py-3 shrink-0"
+          className="px-4 py-3 shrink-0 flex items-center justify-between"
           style={{ borderBottom: '1px solid var(--rune-border)' }}
         >
           <p
@@ -171,6 +171,17 @@ export default function ManuscriptViewer({ bookId }: ManuscriptViewerProps) {
           >
             Chapters
           </p>
+          <a
+            href={`/api/manuscript?bookId=${encodeURIComponent(bookId)}&format=markdown`}
+            download
+            className="text-xs font-mono uppercase tracking-wider px-2 py-1 rounded transition-colors duration-200 cursor-pointer"
+            style={{
+              color: 'var(--rune-gold)',
+              background: 'color-mix(in srgb, var(--rune-gold) 10%, transparent)',
+            }}
+          >
+            Export
+          </a>
         </div>
 
         {/* Chapter list */}

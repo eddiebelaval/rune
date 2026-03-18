@@ -1,11 +1,14 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { WorkspaceRooms } from '@/hooks/useWorkspace';
 import type { BacklogItem, Room, WorkspaceFile } from '@/types/database';
+import type { KnowledgeFile } from '@/types/knowledge';
 import KnowledgeGraph from '@/components/KnowledgeGraph';
 import ManuscriptViewer from '@/components/ManuscriptViewer';
 import BookProgress from '@/components/BookProgress';
+import WorldBuildingDashboard from '@/components/WorldBuildingDashboard';
+import { createClient } from '@/lib/supabase-browser';
 
 // ---------------------------------------------------------------------------
 // ActivityStream — Right sidebar with Workspace + Progress + Graph + Manuscript
@@ -18,7 +21,7 @@ interface ActivityStreamProps {
   nextItem: BacklogItem | null;
 }
 
-type Tab = 'workspace' | 'progress' | 'graph' | 'manuscript';
+type Tab = 'world' | 'workspace' | 'progress' | 'graph' | 'manuscript';
 
 /** Simple inline SVG chevron for expandable sections */
 function ChevronIcon({ expanded }: { expanded: boolean }) {
@@ -242,6 +245,7 @@ function WorkspaceTab({ rooms }: { rooms: WorkspaceRooms }) {
 }
 
 const TAB_LABELS: Record<Tab, string> = {
+  world: 'World',
   workspace: 'Files',
   progress: 'Progress',
   graph: 'Graph',
@@ -249,7 +253,41 @@ const TAB_LABELS: Record<Tab, string> = {
 };
 
 export default function ActivityStream({ bookId, rooms, backlogItems, nextItem }: ActivityStreamProps) {
-  const [activeTab, setActiveTab] = useState<Tab>('workspace');
+  const [activeTab, setActiveTab] = useState<Tab>('world');
+  const [kbFiles, setKbFiles] = useState<KnowledgeFile[]>([]);
+
+  // Fetch KB files for WorldBuildingDashboard
+  useEffect(() => {
+    const supabase = createClient();
+    supabase
+      .from('knowledge_files')
+      .select('*')
+      .eq('book_id', bookId)
+      .eq('deleted', false)
+      .order('updated_at', { ascending: false })
+      .then(({ data }) => {
+        if (data) setKbFiles(data as KnowledgeFile[]);
+      });
+
+    // Realtime subscription for KB files
+    const channel = supabase
+      .channel(`kb-activity-${bookId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge_files', filter: `book_id=eq.${bookId}` }, () => {
+        // Refetch on any change
+        supabase
+          .from('knowledge_files')
+          .select('*')
+          .eq('book_id', bookId)
+          .eq('deleted', false)
+          .order('updated_at', { ascending: false })
+          .then(({ data }) => {
+            if (data) setKbFiles(data as KnowledgeFile[]);
+          });
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [bookId]);
 
   return (
     <div className="flex flex-col h-full">
@@ -258,7 +296,7 @@ export default function ActivityStream({ bookId, rooms, backlogItems, nextItem }
         className="flex px-3 pt-3 pb-1 gap-1"
         style={{ borderBottom: '1px solid var(--rune-border)' }}
       >
-        {(['workspace', 'progress', 'graph', 'manuscript'] as const).map((tab) => (
+        {(['world', 'workspace', 'progress', 'graph', 'manuscript'] as const).map((tab) => (
           <button
             key={tab}
             type="button"
@@ -277,6 +315,31 @@ export default function ActivityStream({ bookId, rooms, backlogItems, nextItem }
 
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto py-3">
+        {activeTab === 'world' && (
+          <div className="px-3">
+            <WorldBuildingDashboard
+              kbFiles={kbFiles}
+              gateScore={(() => {
+                const types = ['characters', 'world-building', 'lore', 'relationships-map', 'timeline'];
+                const populated = types.filter(t => kbFiles.some(f => f.file_type === t && f.content.length > 30));
+                return Math.round((populated.length / types.length) * 100);
+              })()}
+              gateReady={
+                kbFiles.some(f => f.file_type === 'characters' && f.content.length > 30) &&
+                kbFiles.some(f => f.file_type === 'world-building' && f.content.length > 30)
+              }
+              blockers={[
+                ...(!kbFiles.some(f => f.file_type === 'characters' && f.content.length > 30) ? ['No characters described yet'] : []),
+                ...(!kbFiles.some(f => f.file_type === 'world-building' && f.content.length > 30) ? ['No world description yet'] : []),
+              ]}
+              suggestions={[
+                ...(!kbFiles.some(f => f.file_type === 'lore') ? ['Consider defining the rules of your world'] : []),
+                ...(!kbFiles.some(f => f.file_type === 'relationships-map') ? ['Map character relationships for better dialogue'] : []),
+                ...(!kbFiles.some(f => f.file_type === 'timeline') ? ['A timeline helps maintain consistency'] : []),
+              ]}
+            />
+          </div>
+        )}
         {activeTab === 'workspace' && <WorkspaceTab rooms={rooms} />}
         {activeTab === 'progress' && <BookProgress bookId={bookId} />}
         {activeTab === 'graph' && (
