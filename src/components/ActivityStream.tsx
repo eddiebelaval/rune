@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { WorkspaceRooms } from '@/hooks/useWorkspace';
 import type { BacklogItem, Room, WorkspaceFile } from '@/types/database';
 import type { KnowledgeFile } from '@/types/knowledge';
@@ -56,7 +56,31 @@ const roomLabels: Record<Room, string> = {
   publish: 'Publish',
 };
 
-function WorkspaceTab({ rooms }: { rooms: WorkspaceRooms }) {
+/** Upload icon (arrow up into tray) */
+function UploadIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <polyline points="17 8 12 3 7 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <line x1="12" y1="3" x2="12" y2="15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** Download icon (arrow down from tray) */
+function DownloadIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <polyline points="7 10 12 15 17 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <line x1="12" y1="15" x2="12" y2="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+type ImportStatus = 'idle' | 'uploading' | 'success' | 'error';
+
+function WorkspaceTab({ rooms, bookId }: { rooms: WorkspaceRooms; bookId: string }) {
   const [expandedRooms, setExpandedRooms] = useState<Record<string, boolean>>({
     brainstorm: true,
     drafts: false,
@@ -64,6 +88,9 @@ function WorkspaceTab({ rooms }: { rooms: WorkspaceRooms }) {
   });
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   const [selectedFile, setSelectedFile] = useState<WorkspaceFile | null>(null);
+  const [importStatus, setImportStatus] = useState<ImportStatus>('idle');
+  const [importMessage, setImportMessage] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const toggleRoom = (room: string) => {
     setExpandedRooms((prev) => ({ ...prev, [room]: !prev[room] }));
@@ -77,10 +104,123 @@ function WorkspaceTab({ rooms }: { rooms: WorkspaceRooms }) {
     setSelectedFile((prev) => (prev?.id === file.id ? null : file));
   }, []);
 
+  const handleImport = useCallback(async (file: File) => {
+    setImportStatus('uploading');
+    setImportMessage('');
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('book_id', bookId);
+
+      const res = await fetch('/api/import', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setImportStatus('error');
+        setImportMessage(data.error ?? 'Import failed');
+        return;
+      }
+
+      const result = data.import;
+      setImportStatus('success');
+      setImportMessage(
+        `${result.wordCount.toLocaleString()} words, ${result.totalSections} section${result.totalSections !== 1 ? 's' : ''}`
+      );
+
+      // Clear success message after 4s
+      setTimeout(() => {
+        setImportStatus('idle');
+        setImportMessage('');
+      }, 4000);
+    } catch {
+      setImportStatus('error');
+      setImportMessage('Upload failed');
+    }
+  }, [bookId]);
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleImport(file);
+    // Reset input so the same file can be re-selected
+    e.target.value = '';
+  }, [handleImport]);
+
+  const handleExport = useCallback(() => {
+    window.open(`/api/export?book_id=${bookId}&format=full`, '_blank');
+  }, [bookId]);
+
   const roomKeys = Object.keys(rooms) as Room[];
 
   return (
     <div className="space-y-1">
+      {/* Import/Export toolbar */}
+      <div className="flex items-center justify-between px-3 pb-2" style={{ borderBottom: '1px solid var(--rune-border)' }}>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importStatus === 'uploading'}
+            className="flex items-center gap-1.5 px-2 py-1 rounded transition-colors duration-150 cursor-pointer"
+            style={{
+              color: importStatus === 'uploading' ? 'var(--rune-muted)' : 'var(--rune-gold)',
+              backgroundColor: 'color-mix(in srgb, var(--rune-gold) 8%, transparent)',
+              fontFamily: 'var(--font-mono, "IBM Plex Mono", monospace)',
+              fontSize: '10px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+            }}
+          >
+            <UploadIcon />
+            {importStatus === 'uploading' ? 'Importing...' : 'Import'}
+          </button>
+          <button
+            type="button"
+            onClick={handleExport}
+            className="flex items-center gap-1.5 px-2 py-1 rounded transition-colors duration-150 cursor-pointer"
+            style={{
+              color: 'var(--rune-muted)',
+              backgroundColor: 'transparent',
+              fontFamily: 'var(--font-mono, "IBM Plex Mono", monospace)',
+              fontSize: '10px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+            }}
+          >
+            <DownloadIcon />
+            Export
+          </button>
+        </div>
+
+        {/* Status message */}
+        {importMessage && (
+          <span
+            className="text-xs truncate max-w-[140px]"
+            style={{
+              color: importStatus === 'error' ? 'var(--rune-error)' : 'var(--rune-gold)',
+              fontFamily: 'var(--font-mono, "IBM Plex Mono", monospace)',
+              fontSize: '10px',
+            }}
+          >
+            {importMessage}
+          </span>
+        )}
+      </div>
+
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".txt,.md,.markdown,.docx"
+        onChange={handleFileChange}
+        className="hidden"
+        aria-label="Import file"
+      />
+
       {/* File viewer panel */}
       {selectedFile && (
         <div
@@ -340,7 +480,7 @@ export default function ActivityStream({ bookId, rooms, backlogItems, nextItem }
             />
           </div>
         )}
-        {activeTab === 'workspace' && <WorkspaceTab rooms={rooms} />}
+        {activeTab === 'workspace' && <WorkspaceTab rooms={rooms} bookId={bookId} />}
         {activeTab === 'progress' && <BookProgress bookId={bookId} />}
         {activeTab === 'graph' && (
           <div className="px-3">
