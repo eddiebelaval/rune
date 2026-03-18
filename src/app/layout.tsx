@@ -1,10 +1,17 @@
 import type { Metadata } from "next";
-import { Source_Serif_4, Source_Sans_3, IBM_Plex_Mono } from "next/font/google";
+import { Cormorant_Garamond, Source_Serif_4, Source_Sans_3, IBM_Plex_Mono } from "next/font/google";
 import { createServerClient } from "@/lib/supabase";
 import AppHeader from "@/components/AppHeader";
 import AppSidebar from "@/components/AppSidebar";
 import ThemeInitializer from "@/components/ThemeInitializer";
 import "./globals.css";
+
+const cormorant = Cormorant_Garamond({
+  subsets: ["latin"],
+  weight: ["300", "400", "500"],
+  variable: "--font-cormorant",
+  display: "swap",
+});
 
 const sourceSerif = Source_Serif_4({
   subsets: ["latin"],
@@ -45,7 +52,7 @@ export default async function RootLayout({
   return (
     <html
       lang="en"
-      className={`${sourceSerif.variable} ${sourceSans.variable} ${ibmPlexMono.variable}`}
+      className={`${cormorant.variable} ${sourceSerif.variable} ${sourceSans.variable} ${ibmPlexMono.variable}`}
     >
       <body className="min-h-dvh">
         <ThemeInitializer />

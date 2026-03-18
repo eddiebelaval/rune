@@ -71,8 +71,8 @@ export default function AppFooter() {
           {/* Brand column */}
           <div>
             <p
-              className="mb-3 font-serif text-xl tracking-tight"
-              style={{ color: 'var(--rune-gold)' }}
+              className="mb-3 text-xl tracking-tight"
+              style={{ color: 'var(--rune-gold)', fontFamily: 'var(--font-cormorant, "Cormorant Garamond", serif)', fontWeight: 400 }}
             >
               Rune
             </p>
