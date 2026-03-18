@@ -2,7 +2,7 @@
 ## Rune
 
 > Last evolved: 2026-03-18 | Confidence: HIGH
-> Distance from SPEC: 42% (5 of 12 pillars realized, 3 partial)
+> Distance from SPEC: 40% (5 of 12 pillars realized, 3 partial, billing model decided)
 
 ---
 
@@ -159,6 +159,9 @@ Rune walks the user through three stages. You can't skip ahead -- each stage fee
 | 2026-03-18 | Layout restructure: header-first to sidebar-first (Claude.ai pattern). Profile section, settings dashboard, dark mode toggle, BYOK API key management. Profiles table with auto-create trigger. Dashboard with continue-writing card + stats. | "full service" sprint | Pillars (warmth, never lose it) |
 | 2026-03-18 | Trust infrastructure: Privacy policy, Terms of Service (IP ownership front and center), proper 4-column footer. "Your book. Your IP. Period." Trust stack: legal + BYOK + self-host. | "its all your IP" | Edges, Anti-Vision |
 | 2026-03-18 | Semantic versioning: 0.STAGE.PATCH scheme. v0.9.0 (Stage 9). CHANGELOG.md. Version surfaced in footer + settings. | Launch prep hygiene | All |
+| 2026-03-18 | Subscription model: API costs absorbed as COGS. No BYOK for hosted users. API Keys tab removed. First users (Alexis, Kobe, Emily) free. | "I'll eat the cost" | Pillars (5), Edges |
+| 2026-03-18 | Model routing simplified: Sonnet-default for all tasks. Opus only for final manuscript at Premium. Haiku for clerk work. | COGS optimization | Pillars (5) |
+| 2026-03-18 | Logo typography: Cormorant Garamond (weight 400). High-contrast display serif with 16th century Garamond lineage. Applied to all wordmark placements. | Brand identity | Pillars (warmth, never lose it) |
 
 ---
 
