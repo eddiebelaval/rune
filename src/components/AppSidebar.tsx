@@ -139,8 +139,8 @@ export default function AppSidebar({ user }: AppSidebarProps) {
         {/* Logo */}
         <Link
           href="/"
-          className="mb-6 font-serif text-lg"
-          style={{ color: 'var(--rune-gold)' }}
+          className="mb-6 text-lg"
+          style={{ color: 'var(--rune-gold)', fontFamily: 'var(--font-cormorant, "Cormorant Garamond", serif)', fontWeight: 400 }}
           aria-label="Rune home"
         >
           R
@@ -220,8 +220,8 @@ export default function AppSidebar({ user }: AppSidebarProps) {
       <div className="flex items-center justify-between px-4 py-4">
         <Link
           href="/"
-          className="font-serif text-xl tracking-tight"
-          style={{ color: 'var(--rune-gold)' }}
+          className="text-xl tracking-tight"
+          style={{ color: 'var(--rune-gold)', fontFamily: 'var(--font-cormorant, "Cormorant Garamond", serif)', fontWeight: 400 }}
         >
           Rune
         </Link>
