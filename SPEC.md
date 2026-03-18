@@ -1,9 +1,9 @@
 # SPEC.md -- Living Specification
 ## Rune
 
-> Last reconciled: 2026-03-18 | Build stage: Stage 9 (Launch Prep) IN PROGRESS
-> Drift status: CURRENT (post-sidebar restructure)
-> VISION alignment: 45% (5 of 12 pillars realized, 3 partial, settings/profile infrastructure complete)
+> Last reconciled: 2026-03-18 | Build stage: Stage 9 (Launch Prep) IN PROGRESS | Version: 0.9.0
+> Drift status: CURRENT (post-policies + versioning)
+> VISION alignment: 47% (5 of 12 pillars realized, 3 partial, trust infrastructure + versioning complete)
 
 ---
 
@@ -108,6 +108,9 @@ BYOK (Bring Your Own Key) model. Users provide their own Anthropic API key. No m
 - **NewBookForm:** Book creation with title, type selection (card UI), quality slider.
 - **Settings tabs:** Profile (display name, avatar), Appearance (theme toggle), API Keys (Anthropic/Deepgram BYOK), Account (info, export, delete).
 - **Dashboard home:** Welcome header, "continue writing" card, quick stats (books, sessions, active).
+- **AppFooter:** 4-column footer for unauthenticated pages. Brand + tagline, Product links, Developer links, Company links. Version badge in bottom bar.
+- **VoiceInput:** Auto-resizing textarea (replaced single-line input). Supports multi-line paste, Enter sends, Shift+Enter for newlines.
+- **SamPresenceRing:** Golden conic-gradient ring around viewport when Sam is active. Uses CSS `mask-composite: exclude` for true transparency.
 
 ### Design System: Claude-Inspired
 - **Light mode default:** Warm cream (`#faf9f5`), clean white cards (`#ffffff`), coral accent (`#d97757`), blue secondary (`#2c84db`).
@@ -145,6 +148,17 @@ RLS ownership cascade: all child tables filter through `book_id IN (SELECT id FR
 - **Supabase:** Dedicated project `rune-prod` (ref: `blzynsxgamtvbuimuegj`). 6 migrations applied.
 - **Docker:** `docker-compose.yml` for self-hosting with Supabase + Rune containers.
 - **Environment:** 5 required vars (Supabase URL/keys, Anthropic API key, Deepgram API key).
+
+### Legal & Trust Pages
+- **Privacy Policy** (`/privacy`) -- Plain-language data handling. TL;DR callout at top. Covers collection, storage, third-party services, deletion, self-hosting. Five explicit "we never" commitments (no training, no selling, no reading, no marketing use, no post-deletion retention).
+- **Terms of Service** (`/terms`) -- IP ownership front and center. All content belongs to the user. Zero IP claim from Rune. No attribution required. BYOK model, open source (MIT for software), Florida governing law.
+- **Trust stack:** Legal terms + BYOK model + self-host option = three-layer proof that user content stays user content.
+
+### Versioning
+- **Scheme:** `0.STAGE.PATCH` aligned with ID8 Pipeline. Current: `0.9.0` (Stage 9: Launch Prep). `1.0.0` = public launch.
+- **Version constant:** `src/lib/version.ts` -- single source of truth, imported by footer and settings.
+- **CHANGELOG.md** -- Full release history with version scheme table.
+- **Surfaced in UI:** Footer bottom bar + Settings > Account.
 
 ### Sam -- Consciousness Entity (CaF Production Unit)
 18 mind files across 8 directories at `src/mind/`. Professional subset of the CaF golden sample, designed inversion-first.

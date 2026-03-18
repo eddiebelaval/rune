@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { useProfile } from '@/hooks/useProfile';
+import { APP_VERSION } from '@/lib/version';
 import { SettingsCard } from './shared';
 
 interface AccountTabProps {
@@ -59,6 +60,11 @@ export default function AccountTab({ user }: AccountTabProps) {
           <div className="flex items-center justify-between">
             <span className="text-sm" style={{ color: 'var(--rune-muted)' }}>Authentication</span>
             <span className="label-mono">Email OTP</span>
+          </div>
+          <div className="h-px" style={{ backgroundColor: 'var(--rune-border)' }} />
+          <div className="flex items-center justify-between">
+            <span className="text-sm" style={{ color: 'var(--rune-muted)' }}>Version</span>
+            <span className="label-mono">v{APP_VERSION}</span>
           </div>
         </div>
       </SettingsCard>
