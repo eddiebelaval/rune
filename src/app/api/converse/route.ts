@@ -28,6 +28,7 @@ import type { ConversationIntent } from '@/lib/ai/classify-intent';
 import type { QualityLevel, SessionMode, Book, Session } from '@/types/database';
 import type { ModelTask } from '@/types/models';
 import type { PipelineStage } from '@/types/knowledge';
+import { isValidUUID, isValidMessage, safeErrorResponse } from '@/lib/validation';
 
 // ---------------------------------------------------------------------------
 // Map conversation intent to model task / session mode
@@ -87,14 +88,14 @@ export async function POST(
 
     const { message, book_id, session_id } = body;
 
-    if (!message || typeof message !== 'string') {
-      return NextResponse.json({ error: 'Missing required field: message' }, { status: 400 });
+    if (!isValidMessage(message)) {
+      return NextResponse.json({ error: 'Invalid or missing message' }, { status: 400 });
     }
-    if (!book_id || typeof book_id !== 'string') {
-      return NextResponse.json({ error: 'Missing required field: book_id' }, { status: 400 });
+    if (!isValidUUID(book_id)) {
+      return NextResponse.json({ error: 'Invalid book_id' }, { status: 400 });
     }
-    if (!session_id || typeof session_id !== 'string') {
-      return NextResponse.json({ error: 'Missing required field: session_id' }, { status: 400 });
+    if (!isValidUUID(session_id)) {
+      return NextResponse.json({ error: 'Invalid session_id' }, { status: 400 });
     }
 
     const quality: QualityLevel = body.quality ?? 'standard';
@@ -204,8 +205,8 @@ export async function POST(
             user.id, book_id, controller, encoder,
           );
         } catch (error) {
-          const msg = error instanceof Error ? error.message : 'Stream error';
-          controller.enqueue(encoder.encode(`\n\n[Error: ${msg}]`));
+          console.error('[converse] Stream error:', error);
+          controller.enqueue(encoder.encode('\n\n[An error occurred during the conversation]'));
         } finally {
           controller.close();
         }
@@ -221,10 +222,8 @@ export async function POST(
       },
     });
   } catch (error) {
-    console.error('[converse] Conversation failed:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
-      { error: `Conversation failed: ${errorMessage}` },
+      { error: safeErrorResponse('converse', error) },
       { status: 500 },
     );
   }

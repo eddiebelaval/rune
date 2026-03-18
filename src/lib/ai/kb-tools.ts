@@ -30,7 +30,7 @@ export async function executeKBTool(
     case 'search_kb':
       return handleSearchKB(args, userId, bookId)
     case 'get_kb_entry':
-      return handleGetEntry(args)
+      return handleGetEntry(args, userId)
     case 'list_kb_files':
       return handleListFiles(args, userId, bookId)
     default:
@@ -85,7 +85,7 @@ async function handleUpdateEntry(
     const mode = (args.mode as string) ?? 'append'
 
     const existing = await KnowledgeBaseService.getFile(fileId)
-    if (!existing) return { success: false, error: 'KB file not found' }
+    if (!existing || existing.user_id !== userId) return { success: false, error: 'KB file not found' }
 
     const newContent = mode === 'append'
       ? existing.content + '\n\n' + (args.content as string)
@@ -141,11 +141,12 @@ async function handleSearchKB(
 }
 
 async function handleGetEntry(
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  userId: string
 ): Promise<ToolCallResult> {
   try {
     const file = await KnowledgeBaseService.getFile(args.file_id as string)
-    if (!file) return { success: false, error: 'KB file not found' }
+    if (!file || file.user_id !== userId) return { success: false, error: 'KB file not found' }
 
     return {
       success: true,
