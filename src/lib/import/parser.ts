@@ -1,8 +1,6 @@
 // Import Parser — Extract text from uploaded files (txt, md, docx)
 // Handles format detection, text extraction, and basic structure detection.
 
-import type { BookType } from '@/types/database'
-
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -57,15 +55,11 @@ function detectFormat(filename: string, contentType?: string): ParsedDocument['f
 /**
  * Extract raw text from a .docx ArrayBuffer.
  *
- * docx files are ZIP archives containing XML. We use Node.js built-in
- * yauzl (via unzip) to read word/document.xml, then extract <w:t> text nodes.
- * Zero external dependencies.
+ * docx files are ZIP archives containing XML. We read word/document.xml
+ * via a minimal central-directory-based ZIP extractor, then extract <w:t>
+ * text nodes. Zero external dependencies — uses Node.js built-in zlib.
  */
 async function extractDocxText(buffer: ArrayBuffer): Promise<string> {
-  const { unzipSync } = await import('zlib')
-
-  // A .docx is a ZIP. We need to find and decompress word/document.xml.
-  // ZIP format: scan for local file headers (0x04034b50) and find our target.
   const buf = Buffer.from(buffer)
   const xml = extractFileFromZip(buf, 'word/document.xml')
 
@@ -93,39 +87,68 @@ async function extractDocxText(buffer: ArrayBuffer): Promise<string> {
 
 /**
  * Minimal ZIP file extractor — finds a named entry and returns its content.
- * Uses Node.js built-in zlib for decompression. No external deps.
+ * Uses the central directory (not local headers) for reliable compressed sizes.
+ * This handles docx files produced with data descriptors (GP-bit 3 set), where
+ * the local file header stores compressedSize = 0. Central directory entries
+ * always contain the correct sizes. No external deps — uses Node.js built-in zlib.
  */
 function extractFileFromZip(zipBuffer: Buffer, targetPath: string): string | null {
   const { inflateRawSync } = require('zlib') as typeof import('zlib')
+  const len = zipBuffer.length
 
-  let offset = 0
-  while (offset < zipBuffer.length - 4) {
-    // Local file header signature: 0x04034b50
-    const sig = zipBuffer.readUInt32LE(offset)
-    if (sig !== 0x04034b50) break
+  // Step 1: Locate End of Central Directory (EOCD) by scanning backwards.
+  // EOCD signature: 0x06054b50. Fixed part is 22 bytes; may have a trailing
+  // comment up to 65535 bytes long.
+  const EOCD_SIG = 0x06054b50
+  const EOCD_FIXED = 22
+  let eocdOffset = -1
+  const scanStart = len - EOCD_FIXED
+  const scanEnd = Math.max(0, len - EOCD_FIXED - 65535)
+  for (let i = scanStart; i >= scanEnd; i--) {
+    if (zipBuffer.readUInt32LE(i) === EOCD_SIG) {
+      eocdOffset = i
+      break
+    }
+  }
+  if (eocdOffset === -1) return null
 
-    const compressionMethod = zipBuffer.readUInt16LE(offset + 8)
-    const compressedSize = zipBuffer.readUInt32LE(offset + 18)
-    const uncompressedSize = zipBuffer.readUInt32LE(offset + 22)
-    const nameLength = zipBuffer.readUInt16LE(offset + 26)
-    const extraLength = zipBuffer.readUInt16LE(offset + 28)
-    const name = zipBuffer.subarray(offset + 30, offset + 30 + nameLength).toString('utf8')
-    const dataStart = offset + 30 + nameLength + extraLength
+  const cdCount = zipBuffer.readUInt16LE(eocdOffset + 10)
+  const cdOffset = zipBuffer.readUInt32LE(eocdOffset + 16)
+
+  // Step 2: Walk central directory entries.
+  // Central directory file header signature: 0x02014b50
+  const CD_SIG = 0x02014b50
+  let cdPos = cdOffset
+  for (let i = 0; i < cdCount; i++) {
+    if (cdPos + 46 > len) break
+    if (zipBuffer.readUInt32LE(cdPos) !== CD_SIG) break
+
+    const compressionMethod = zipBuffer.readUInt16LE(cdPos + 10)
+    const compressedSize = zipBuffer.readUInt32LE(cdPos + 20)
+    const cdNameLength = zipBuffer.readUInt16LE(cdPos + 28)
+    const cdExtraLength = zipBuffer.readUInt16LE(cdPos + 30)
+    const cdCommentLength = zipBuffer.readUInt16LE(cdPos + 32)
+    const localHeaderOffset = zipBuffer.readUInt32LE(cdPos + 42)
+    const name = zipBuffer.subarray(cdPos + 46, cdPos + 46 + cdNameLength).toString('utf8')
 
     if (name === targetPath) {
+      // Step 3: Jump to local file header for the true data offset.
+      // The local extra field length can differ from the CD extra field length —
+      // always re-read it from the local header.
+      const localNameLen = zipBuffer.readUInt16LE(localHeaderOffset + 26)
+      const localExtraLen = zipBuffer.readUInt16LE(localHeaderOffset + 28)
+      const dataStart = localHeaderOffset + 30 + localNameLen + localExtraLen
+
       if (compressionMethod === 0) {
-        // Stored (no compression)
         return zipBuffer.subarray(dataStart, dataStart + compressedSize).toString('utf8')
       } else if (compressionMethod === 8) {
-        // Deflate
         const compressed = zipBuffer.subarray(dataStart, dataStart + compressedSize)
-        const decompressed = inflateRawSync(compressed)
-        return decompressed.toString('utf8')
+        return inflateRawSync(compressed).toString('utf8')
       }
       return null
     }
 
-    offset = dataStart + compressedSize
+    cdPos += 46 + cdNameLength + cdExtraLength + cdCommentLength
   }
 
   return null

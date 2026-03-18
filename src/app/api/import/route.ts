@@ -17,7 +17,7 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { parseUpload, parseText } from '@/lib/import/parser';
 import { routeImport } from '@/lib/import/router';
-import { isValidUUID } from '@/lib/validation';
+import { isValidUUID, isValidText } from '@/lib/validation';
 import type { BookType, QualityLevel } from '@/types/database';
 
 // Max file size: 5MB
@@ -25,12 +25,6 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
 // Allowed file types
 const ALLOWED_EXTENSIONS = new Set(['txt', 'md', 'markdown', 'docx']);
-const ALLOWED_CONTENT_TYPES = new Set([
-  'text/plain',
-  'text/markdown',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-]);
-
 export async function POST(request: Request): Promise<NextResponse> {
   try {
     // Authenticate
@@ -138,8 +132,8 @@ async function handleTextPaste(
 
   const { text, book_id: bookId, title, quality = 'standard' } = body;
 
-  if (!text || typeof text !== 'string' || text.trim().length === 0) {
-    return NextResponse.json({ error: 'Missing or empty text field' }, { status: 400 });
+  if (!isValidText(text)) {
+    return NextResponse.json({ error: 'Text must be 1-100,000 characters' }, { status: 400 });
   }
   if (!bookId || !isValidUUID(bookId)) {
     return NextResponse.json({ error: 'Invalid or missing book_id' }, { status: 400 });
