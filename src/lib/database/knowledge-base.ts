@@ -13,8 +13,12 @@ import type {
   KBFileVersion,
 } from '../../types/knowledge'
 
-// Singleton service client — stateless, no session, safe to reuse
-const db = createServiceClient()
+// Lazy singleton service client — deferred to avoid build-time crash when env vars are missing
+let _db: ReturnType<typeof createServiceClient> | null = null
+function getDb() {
+  if (!_db) _db = createServiceClient()
+  return _db
+}
 
 /**
  * Sanitize search input to prevent PostgREST filter injection.
@@ -34,7 +38,7 @@ export class KnowledgeBaseService {
   ): Promise<KnowledgeFile> {
     const inferred = inferFolderAndScope(input.file_type)
 
-    const { data, error } = await db
+    const { data, error } = await getDb()
       .from('knowledge_files')
       .insert({
         user_id: userId,
@@ -66,7 +70,7 @@ export class KnowledgeBaseService {
     userId: string,
     filters: KBFileFilters = {}
   ): Promise<KnowledgeFile[]> {
-    let query = db
+    let query = getDb()
       .from('knowledge_files')
       .select('*')
       .eq('user_id', userId)
@@ -108,7 +112,7 @@ export class KnowledgeBaseService {
    * Get a single KB file by ID
    */
   static async getFile(id: string): Promise<KnowledgeFile | null> {
-    const { data, error } = await db
+    const { data, error } = await getDb()
       .from('knowledge_files')
       .select('*')
       .eq('id', id)
@@ -150,7 +154,7 @@ export class KnowledgeBaseService {
     if (updates.is_active !== undefined) updateData.is_active = updates.is_active
     if (updates.scope !== undefined) updateData.scope = updates.scope
 
-    const { data, error } = await db
+    const { data, error } = await getDb()
       .from('knowledge_files')
       .update(updateData)
       .eq('id', id)
@@ -165,7 +169,7 @@ export class KnowledgeBaseService {
    * Soft delete a KB file
    */
   static async deleteFile(id: string): Promise<void> {
-    const { error } = await db
+    const { error } = await getDb()
       .from('knowledge_files')
       .update({ deleted: true, deleted_at: new Date().toISOString() })
       .eq('id', id)
@@ -177,7 +181,7 @@ export class KnowledgeBaseService {
    * Set is_active on a KB file (single UPDATE, no read needed)
    */
   static async setActive(id: string, isActive: boolean): Promise<void> {
-    const { error } = await db
+    const { error } = await getDb()
       .from('knowledge_files')
       .update({ is_active: isActive })
       .eq('id', id)
@@ -196,7 +200,7 @@ export class KnowledgeBaseService {
   ): Promise<KnowledgeFile[]> {
     const scopeFilter = getScopeHierarchy(scope)
 
-    let query = db
+    let query = getDb()
       .from('knowledge_files')
       .select('*')
       .eq('user_id', userId)
@@ -231,7 +235,7 @@ export class KnowledgeBaseService {
     fileId: string,
     limit = 50
   ): Promise<KBFileVersion[]> {
-    const { data, error } = await db
+    const { data, error } = await getDb()
       .from('knowledge_file_versions')
       .select('*')
       .eq('knowledge_file_id', fileId)
