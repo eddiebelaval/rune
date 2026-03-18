@@ -326,3 +326,31 @@ Full layout restructure from header-first to sidebar-first app shell, following 
 | Separate profiles table | Not auth.users metadata | Can't set RLS on auth.users. user_metadata is client-writable (security risk). Dedicated table with trigger is clean. |
 | Preferences as JSONB | Not separate columns | Extensible without migrations. API keys, quality defaults, future prefs all in one field. |
 | useProfile hook | Shared across 3 tabs | DRY. Each tab was copy-pasting identical fetch/parse/save logic. Hook centralizes it. |
+
+### Footer, Policies, and Versioning (Phase 7)
+
+Rune needed the trust infrastructure to match the product quality. Three additions, all in one pass.
+
+**Why it matters:** AI writing tools have an IP trust problem. Users creating original creative work need to know, in writing, that their content is theirs. These pages aren't legal boilerplate — they're a competitive differentiator. The BYOK model + self-host option + explicit IP terms form a trust stack that most AI tools can't match.
+
+1. **Proper footer** (`components/AppFooter.tsx`) -- 4-column layout: brand (logo + tagline + social icons), Product links, Developer links (source, issues, self-host, MIT badge), Company links (id8Labs, Privacy, Terms). Bottom bar with copyright, tagline, and version badge. Only renders on unauthenticated pages.
+
+2. **Privacy policy** (`/privacy`) -- Data handling in plain language. Lead with TL;DR callout: "We don't read your books. We don't train on your writing. We don't sell your data." Covers: what we collect (email, preferences), what we store (books, KB, sessions), what we never do (5 explicit commitments), third-party services (Anthropic, Deepgram, Supabase, Vercel), data deletion, self-hosting.
+
+3. **Terms of service** (`/terms`) -- IP ownership front and center: "Your book. Your IP. Period." Explicit: you own all content, Rune claims zero IP rights, no attribution required, AI-assisted content is yours. Also covers: what Rune is/isn't, BYOK model, responsibilities, service availability, open source (MIT applies to software, not your content), Florida governing law.
+
+4. **Semantic versioning** -- Scheme: `0.STAGE.PATCH` aligned with ID8 Pipeline. Bumped from `0.1.0` to `0.9.0` (Stage 9). Version constant in `src/lib/version.ts` (single source of truth). Surfaced in footer bottom bar and Settings > Account. `CHANGELOG.md` with full release history and version scheme table. `1.0.0` = public launch with first users onboarded.
+
+5. **SamPresenceRing fix** -- The golden ring that activates when Sam is thinking was painting an opaque `::after` pseudo-element over the entire viewport, blanking the page. Replaced with CSS `mask-composite: exclude` for true center transparency.
+
+6. **VoiceInput multi-line paste** -- Swapped `<input type="text">` for auto-resizing `<textarea>`. Supports pasting multi-paragraph text. Enter sends, Shift+Enter for newlines. Grows up to ~6 lines.
+
+### Architecture Decisions (Phase 7)
+
+| Decision | Choice | Why |
+|----------|--------|-----|
+| Version scheme | `0.STAGE.PATCH` | Aligns with ID8 Pipeline. Makes version number meaningful — `0.9.x` = Stage 9: Launch Prep. |
+| Version constant | `src/lib/version.ts` | Single source of truth. Imported by footer and settings. Avoids reading package.json at runtime. |
+| Policy pages local | `/privacy` and `/terms` inside Rune | Not external links to id8labs.app. Rune-specific, Rune-voiced, Rune-styled. Users stay in the product. |
+| Footer only unauthenticated | Sidebar replaces footer for logged-in users | Same pattern as Claude.ai. Authenticated users have the sidebar for navigation. |
+| mask-composite over ::after | CSS mask for ring transparency | The ::after hack painted a solid background that covered the viewport. Mask-composite makes the center truly transparent without any color dependency. |
