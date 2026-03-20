@@ -1,9 +1,9 @@
 # SPEC.md -- Living Specification
 ## Rune
 
-> Last reconciled: 2026-03-18 | Build stage: Stage 9 (Launch Prep) IN PROGRESS | Version: 0.9.0
-> Drift status: CURRENT (post-policies + versioning)
-> VISION alignment: 47% (5 of 12 pillars realized, 3 partial, trust infrastructure + versioning complete)
+> Last reconciled: 2026-03-20 | Build stage: Stage 9 (Launch Prep) IN PROGRESS | Version: 0.9.0
+> Drift status: CURRENT (post-heal reconciliation)
+> VISION alignment: 70% (5 of 12 pillars realized, 5 partial, 2 unrealized)
 
 ---
 
@@ -42,14 +42,20 @@ What this product can do TODAY.
 
 All mode detection is automatic (Haiku classification). Users never select a mode.
 
-### Knowledge Graph (v1 -- will evolve to full KB)
-Current state is a flat entity graph. VISION calls for a hierarchical, scoped, versioned KB modeled after id8composer. What exists today:
-- **Entity types:** Person, place, theme, event. Each with attributes, mention counts, and timestamps.
-- **Relationships:** Typed connections between any two entities with optional context.
-- **Timeline:** Fuzzy-date events linked to entities and chapters.
-- **Unresolved array:** Contradictions, gaps, unexplored mentions. Auto-feeds the backlog engine.
-- **Visualization:** SVG network graph (`KnowledgeGraph.tsx`) with force-directed layout, entity-type color coding, click-to-inspect, relationship highlighting, mention count badges.
-- **What's missing:** World bible, character profiles (full), settings with sensory detail, lore/rules, story arcs, chapter outlines, scope hierarchy, version tracking, AI CRUD tools. See "What Does NOT Exist Yet" for full gap analysis.
+### 4. Hierarchical Knowledge Base
+
+Evolved from flat entity graph to a full hierarchical, scoped, versioned KB modeled after id8composer:
+
+- **`knowledge_files` table:** 13 file types (characters, world-building, lore, relationships-map, timeline, story-planning, chapter-outlines, character-journeys, thematic-through-lines, drafts, sandbox, research, references). 4 scopes (global/regional/local/session). 6 folder types (foundation/strategy/drafts/sandbox/production/assets).
+- **`KnowledgeBaseService`** (`lib/database/knowledge-base.ts`): Full CRUD with scope inheritance (local query returns global+regional+local files), search with PostgREST injection protection, version history retrieval, soft delete, active toggle.
+- **Scope inheritance:** `getFilesByScope()` resolves scope hierarchy -- a `local` query returns all `global`, `regional`, and `local` files for the book.
+- **Version tracking:** `knowledge_file_versions` table with content snapshots and semantic versioning. `kb-versioning.ts` determines bump type (major/minor/patch) by content diff ratio. DB functions `create_kb_version()` and `restore_kb_version()`.
+- **AI KB tools:** 5 Claude function-calling tools (`create_kb_entry`, `update_kb_entry`, `search_kb`, `get_kb_entry`, `list_kb_files`) defined in `lib/ai/kb-tools-schema.ts`, executed by `lib/ai/kb-tools.ts`. Supports append and replace modes for updates.
+- **KB context inference:** `lib/ai/kb-context-inference.ts` scores relevance (active boost, foundation priority, recency, content richness, keyword overlap), respects scope inheritance, selects files within a 30K token budget, and builds grouped system prompt sections.
+- **Auto-routing:** `inferFolderAndScope()` in `types/folder-system.ts` auto-maps file types to the correct folder and scope.
+- **Visualization:** `WorldBuildingDashboard` with circular progress ring, 6 foundation layer cards, gate readiness indicator. `KnowledgeGraph.tsx` SVG network graph preserved for entity-level visualization.
+- **Data migration:** `20260317220100_migrate_entities_to_kb.sql` migrates legacy `knowledge_entities` to `knowledge_files`. Old tables preserved for rollback.
+- **What's remaining:** Version history UI (browse/compare/restore past versions), provenance tracking (which KB version was active per draft), confidence scoring per entry.
 
 ### Backlog Engine
 - **Six item types:** Question, contradiction, thin spot, unexplored thread, review task, idea.
@@ -176,74 +182,65 @@ RLS ownership cascade: all child tables filter through `book_id IN (SELECT id FR
 | unconscious/ | 2 dotfiles (.narrative-bias, .creative-instinct) | Invisible preferences shaping questions. Bias toward contradiction, personal stakes, silence. |
 | runtime/ | 1 (inner-monologue) | Thread tracking, absence awareness, emotional temperature. |
 
-**Not yet wired into the conversation loop.** Files exist on disk. Loader integration is next -- will compose mind files into Sam's system prompt via the CaF ConsciousnessLoader pattern (proven in Ava, Homer, Dae).
+**Wired into the conversation loop.** Consciousness loader (`lib/sam/loader.ts`) composes 8 layers from mind files into Sam's system prompt. Build-time evaluation (cached as module constants). Unconscious dotfiles loaded through privileged path as behavioral constraints. Converse route composes Sam consciousness + persona prompt + KB context + interview guidance into system prompt. Vercel bundling configured via `outputFileTracingIncludes` to include `src/mind/` in serverless functions.
 
 ## What Does NOT Exist Yet
 
-These are capabilities described in VISION.md that are not built:
+These are capabilities described in VISION.md that are not built or are only partially built:
 
-### Critical Gap: World-Building Knowledge Base (Pillar 2)
+### World-Building Knowledge Base -- Remaining Gaps (Pillar 2, 75% complete)
 
-The current KB is a flat entity graph (person/place/theme/event with relationships). The VISION calls for a full hierarchical KB modeled after id8composer:
+The hierarchical KB architecture is built. What's remaining:
 
-| KB Layer | VISION | Current State |
-|----------|--------|---------------|
-| **Foundation: World Bible** | Core premise, unbreakable rules, tone, terminology | Not built |
-| **Foundation: Character Profiles** | Full profiles with voice, motivations, arc trajectory | Flat entities with mentions only |
-| **Foundation: Settings & Locations** | Sensory details, significance, rules per location | Flat entities only |
-| **Foundation: Lore & Rules** | Magic systems, technology, cultural norms, history | Not built |
-| **Foundation: Relationships Map** | Power dynamics, secrets, debts, feelings | Basic relationship edges exist |
-| **Foundation: Timeline** | Chronological backbone, fuzzy dates | `timeline_events` table exists |
-| **Strategy: Story Arc** | Beginning/ending state, turning points, core question | Not built |
-| **Strategy: Chapter Outlines** | Beat sheets per chapter | Not built |
-| **Strategy: Character Journeys** | Want vs need, key moments, growth per arc | Not built |
-| **Strategy: Thematic Through-Lines** | What the arc is really about | Not built |
-| **Working: Drafts + Sandbox** | AI collaboration space paired with user drafts | Notes table exists (not paired) |
-| **Assets: Research & References** | Source material, inspirations | Not built |
-| **Scope system** | Global/Regional/Local with inheritance | Not built |
-| **Version tracking** | Semantic versioning, content snapshots, restore | Not built |
-| **AI KB tools** | Rune CRUD operations on KB (create/update/search/activate) | Not built |
-| **KB context inference** | Smart selection of relevant KB for each conversation | Not built |
+| Feature | Status |
+|---------|--------|
+| **Version history UI** | Backend exists (`getVersionHistory()`). No UI to browse, compare, or restore past versions. |
+| **Provenance tracking** | No tracking of which KB version was active when each draft was written. |
+| **Confidence scoring** | No per-entry confidence score from AI extraction. |
+| **Draft-sandbox pairing** | `linked_sandbox_id` column exists but sandbox pairing logic is not wired. |
 
-### Critical Gap: Three-Stage Pipeline
+### Three-Stage Pipeline -- Remaining Gaps (Built, needs deepening)
 
 | Stage | VISION | Current State |
 |-------|--------|---------------|
-| **A: World Building** | Guided oral interviews, KB population, completeness tracking | Basic conversation with entity extraction |
-| **B: Story Writing** | KB-informed prose generation, consistency checking, scene drafting | Streaming conversation endpoint exists |
-| **C: Publishing** | Format-agnostic export (book, screenplay, audio script, etc.) | Basic manuscript assembly (internal only) |
-| **Stage awareness** | Rune knows which stage you're in, what's missing, what's next | Not built |
-| **Stage gates** | Can't write prose until world is sufficiently built | Not built |
+| **A: World Building** | Guided oral interviews, KB population, completeness tracking | Interview engine + question trees + WorldBuildingDashboard + gate scoring. Built. |
+| **B: Story Writing** | KB-informed prose generation, consistency checking, scene drafting | Streaming conversation with KB context injection. Consistency checking not built. |
+| **C: Publishing** | Format-agnostic export (book, screenplay, audio script, etc.) | Basic manuscript assembly + export button. Format templates not built. |
+| **Stage awareness** | Rune knows which stage you're in, what's missing, what's next | `pipeline_stage` on books, stage configs, UI indicator in header. Built. |
+| **Stage gates** | Can't write prose until world is sufficiently built | Soft gates with completeness scoring + human-readable gate messages. Built. |
 
-### Critical Gap: Guided Oral Interviews (Pillar 6)
+### Guided Oral Interviews -- Remaining Gaps (Pillar 6, 70% complete)
 
 | Feature | VISION | Current State |
 |---------|--------|---------------|
-| Structured interview sequences | Walk user through world-building layer by layer | 6 conversation modes (auto-detected) |
-| Book-type-specific interviews | Memoir/fiction/nonfiction ask different questions | Prompt templates exist per book type |
-| KB gap detection | "You mentioned X but never described them" | Backlog engine identifies thin spots |
-| Interview -> KB filing | Answers auto-populate KB entries | Entity extraction exists (flat) |
+| Structured interview sequences | Walk user through world-building layer by layer | 3 book-type question trees (Fiction 9, Memoir 8, Nonfiction 7 nodes). Built. |
+| Book-type-specific interviews | Memoir/fiction/nonfiction ask different questions | Per-type question trees with different priorities and extraction hints. Built. |
+| KB gap detection | "You mentioned X but never described them" | `InterviewEngine.detectGaps()` scans for unprofile'd entities. Built. |
+| Interview -> KB filing | Answers auto-populate KB entries | Via Claude `tool_use` calling `create_kb_entry`/`update_kb_entry`. Built. |
+| Interview progress UI | Show user which interview questions are answered/pending | Not built. Engine tracks internally but no user-facing progress view. |
+| Interview revisiting | Ability to deepen or revisit completed interview topics | Not built. Engine is forward-only. |
 
 ### Other Gaps
 
 | VISION Pillar | Gap |
 |---------------|-----|
 | Collaborative Authorship (8) | No multi-user support. Single author per book. |
-| Format-Agnostic Output (9) | No export formats. Manuscript is internal only. Books-first not yet built. |
+| Format-Agnostic Output (9) | No export formats beyond basic manuscript. Books-first not yet built. |
 | Audio-Native Output (10) | No TTS, no audiobook generation. |
 | Illustration Intelligence (11) | No image generation, no concept art pipeline. |
-| KB Version Tracking (12) | No semantic versioning, no content snapshots, no restore. |
-| Streaming Transparency (7) | Partially built. Missing KB operation cards, progress indicators, session-end summaries. |
+| KB Version Tracking (12) | Backend built (versioning logic, DB functions, version history query). No UI. No provenance. 40% complete. |
+| Streaming Transparency (7) | KBOperationCard built. WorldBuildingDashboard in ActivityStream. Missing: streaming wiring for KBOperationCard, progress indicators for long synthesis, session-end summary cards. 85% complete. |
 | Deployment | DEPLOYED. Vercel at `rune-two.vercel.app`, Supabase `rune-prod`. |
 | Billing | Subscription model decided. API costs absorbed as COGS. Stripe integration not yet built. First users (Alexis, Kobe, Emily) get free access. |
-| Tests | No automated test suite. TypeScript passes strict mode but no unit/integration/E2E tests. |
+| Tests | 124 tests across 7 test files (Vitest). Covers text-utils, folder-system, kb-versioning, interview-engine, pipeline stages/gates, KB context inference, KB tools schema. No E2E tests. |
 
 ## Technical Debt
 
 - **Auth evolved post-build:** Original build had Google OAuth. PR #3-5 changed to magic link only. Auth callback still references patterns from the OAuth era.
 - **Design system evolved:** Original Library/Study theme (dark mahogany) replaced by Claude-Inspired (warm cream) in PR #6. Some component comments may reference old theme.
-- **Entity graph needs migration to full KB:** The current `entities`, `relationships`, `timeline_events` tables need to evolve into a `knowledge_files` table with scope, folder structure, and versioning. This is an architectural migration, not a patch.
-- **Three Rooms need stage mapping:** Current rooms (Brainstorm/Drafts/Publish) map to book creation phases. Need to evolve to pipeline stages (World Building/Story Writing/Publishing) with stage-aware behavior.
+- **Legacy entity tables preserved:** `knowledge_entities`, `entity_relationships`, and `timeline_events` tables still exist in the schema for rollback safety. Data has been migrated to `knowledge_files` via `20260317220100_migrate_entities_to_kb.sql`. Legacy tables can be dropped once migration is verified in production.
+- **KB version history UI deferred:** Backend versioning (table, functions, service methods) is complete but no user-facing UI exists to browse, compare, or restore past KB versions.
+- **KBOperationCard streaming not wired:** Component built with approve/dismiss UI, but not yet connected to real-time tool_use streaming events.
 - **No error boundaries.** API routes lack structured error handling.
 - **No rate limiting.** API routes are unprotected.
 - **Server/client split risk:** `supabase.ts` is server-only (imports `next/headers`). `supabase-browser.ts` for client. Mixing causes build errors. Easy to get wrong.

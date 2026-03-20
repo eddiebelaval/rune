@@ -1,8 +1,8 @@
 # VISION.md -- Living North Star
 ## Rune
 
-> Last evolved: 2026-03-18 | Confidence: HIGH
-> Distance from SPEC: 40% (5 of 12 pillars realized, 3 partial, billing model decided)
+> Last evolved: 2026-03-20 | Confidence: HIGH
+> Distance from SPEC: 30% (5 of 12 pillars realized, 5 partial, 2 unrealized)
 
 ---
 
@@ -45,7 +45,7 @@ Rune walks the user through three stages. You can't skip ahead -- each stage fee
 1. **Voice-First Creation** -- REALIZED
    Deepgram WebSocket streaming STT. The user talks, Rune transcribes, classifies intent (Haiku), and routes to the right mode. Typing exists as fallback, not primary. The mic is the pen. Both Stage A and Stage B are driven by conversation.
 
-2. **The World-Building Knowledge Base** -- PARTIAL (30%)
+2. **The World-Building Knowledge Base** -- PARTIAL (75%)
    Modeled after id8composer's KB architecture. A structured, scoped, versioned knowledge base that Rune populates as you talk. Not a flat entity graph -- a full hierarchical file system:
 
    **Foundation Layer** (Global scope -- applies to entire project):
@@ -74,7 +74,7 @@ Rune walks the user through three stages. You can't skip ahead -- each stage fee
 
    Scope inheritance: local drafts automatically see global foundation + regional strategy. Rune selects the right context for each conversation. Version tracking on every KB file -- can restore any previous state.
 
-   **What's built today:** Basic entity graph (person/place/theme/event) with relationships and mentions. Missing: the full hierarchical KB structure, scope system, version tracking, AI-driven CRUD tools, foundation/strategy/working/assets layers.
+   **What's built:** Hierarchical `knowledge_files` table with 13 file types, 4 scopes (global/regional/local/session), 6 folder types (foundation/strategy/drafts/sandbox/production/assets). `KnowledgeBaseService` with full CRUD and scope inheritance. `kb-versioning.ts` with semantic version bumping and change summaries. `knowledge_file_versions` table for content snapshots. 5 AI KB tools (create/update/search/get/list) via Claude function calling. KB context inference with relevance scoring and token-budget-aware selection. `WorldBuildingDashboard` with progress ring and foundation layer cards. Data migration from flat entities to hierarchical KB. **Remaining:** KB version history UI (browse/restore past versions), provenance tracking (which KB version was active per draft), confidence scoring per entry.
 
 3. **The Backlog Engine** -- REALIZED
    Rune is never idle. After every session, it generates questions, identifies thin spots, flags contradictions, surfaces unexplored threads, and queues review tasks. Priority-scored with aging. When you open Rune, it already knows what to work on next. In Stage A, the backlog drives world-building completeness ("You mentioned Kira's mother but never described her -- tell me about her"). In Stage B, it drives story completeness ("Chapter 4 references a location you haven't built yet").
@@ -85,11 +85,13 @@ Rune walks the user through three stages. You can't skip ahead -- each stage fee
 5. **Three-Tier Intelligence** -- REALIZED
    Opus for the heavy thinking (prose generation, manuscript, deep analysis). Sonnet for the working layer (editing, filing, interviews). Haiku for the clerk work (intent detection, entity extraction, KB classification). User controls cost via a single quality slider. Rune routes every task automatically.
 
-6. **Guided Oral Interviews** -- UNREALIZED
+6. **Guided Oral Interviews** -- PARTIAL (70%)
    Rune doesn't just listen passively -- it interviews. Structured question sequences that walk the user through world-building layer by layer. "Tell me about your main character." "What does the world look like?" "What are the rules?" "Who are the factions?" Each answer populates the KB automatically. The interview adapts based on book type -- memoir interviews ask about eras, people, emotions. Fiction interviews ask about world rules, character motivations, conflict structure. Non-fiction interviews ask about thesis, evidence, counter-arguments. Rune knows what's missing and asks for it.
 
-7. **Streaming Transparency** -- PARTIAL (70%)
-   Everything Rune does is visible. Filing a KB entry, connecting entities, drafting a paragraph, updating the world bible -- streamed to the activity panel in real time. Trust through visibility. You watch your scribe work. Missing: KB operation cards (show what Rune is adding/updating with approve/dismiss), progress indicators for long synthesis, session-end summary cards.
+   **What's built:** Question trees for all 3 book types (Fiction: 9 nodes, Memoir: 8 nodes, Nonfiction: 7 nodes) with follow-up questions, extraction hints, and KB layer targeting. `InterviewEngine` class that walks the tree, infers answered questions from existing KB state, detects gaps (entities mentioned but not profiled), tracks completeness percentage, checks Stage B readiness, and generates system prompt additions for interview mode. Voice-to-KB filing via Claude `tool_use` in the converse API. **Remaining:** Interview progress UI (show user which questions are answered/pending), interview session history, ability to revisit/deepen completed interview topics.
+
+7. **Streaming Transparency** -- PARTIAL (85%)
+   Everything Rune does is visible. Filing a KB entry, connecting entities, drafting a paragraph, updating the world bible -- streamed to the activity panel in real time. Trust through visibility. You watch your scribe work. `KBOperationCard` shows Rune's KB operations with approve/dismiss buttons and auto-approve countdown. `WorldBuildingDashboard` mounted in ActivityStream as default "World" tab. Pipeline stage indicator (Workshop/Study/Press) in BookWorkspace header. **Remaining:** Progress indicators for long synthesis, session-end summary cards, KBOperationCard streaming wiring.
 
 8. **Collaborative Authorship** -- UNREALIZED
    Multiple authors on one book. Shared KB, individual voice profiles, merge/conflict resolution for competing drafts. Kobe and Emily writing their children's book together -- each talking to Rune from their own perspective, Rune weaving both voices into one narrative. The KB is shared but voice profiles are separate -- Rune knows who's talking and adapts. Requires: multi-user auth, voice profile separation, collaborative workspace permissions, conflict resolution for KB entries.
@@ -103,8 +105,10 @@ Rune walks the user through three stages. You can't skip ahead -- each stage fee
 11. **Illustration Intelligence** -- UNREALIZED
     Concept art generation from KB content. Character visualizations from character profiles. Scene compositions from chapter drafts. Art direction briefs generated from the world bible and settings. Not final art -- concept work that feeds a human illustrator or stands alone for self-published work. Requires: image generation API, KB-to-visual pipeline, style consistency engine.
 
-12. **KB Version Tracking** -- UNREALIZED
+12. **KB Version Tracking** -- PARTIAL (40%)
     Every KB file maintains semantic versioning (X.Y.Z). Content snapshots at each version. Can restore any historical state. Tracks which KB version was active when each draft was written -- if you change a character's backstory in session 15, you can see which chapters were written with the old backstory. Provenance and confidence scoring on every entry. Modeled after id8composer's version architecture.
+
+    **What's built:** `knowledge_file_versions` table with content snapshots and semantic versioning. `kb-versioning.ts` with `determineVersionType()` (major/minor/patch by content diff), `bumpSemanticVersion()`, `generateChangeSummary()`. `KnowledgeBaseService.getVersionHistory()` for retrieving version history. DB helper functions `create_kb_version()` and `restore_kb_version()`. **Remaining:** Version history UI (browse/compare/restore), provenance tracking (which KB version was active per draft), confidence scoring per entry, version diff visualization.
 
 ## User Truth
 
