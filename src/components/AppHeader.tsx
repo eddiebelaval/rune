@@ -95,8 +95,8 @@ export default function AppHeader({ user }: AppHeaderProps) {
       <div className="flex items-center gap-6">
         <Link
           href="/"
-          className="font-serif text-xl tracking-tight"
-          style={{ color: 'var(--rune-gold)' }}
+          className="text-xl tracking-tight"
+          style={{ color: 'var(--rune-gold)', fontFamily: 'var(--font-cormorant, "Cormorant Garamond", serif)', fontWeight: 400 }}
         >
           Rune
         </Link>

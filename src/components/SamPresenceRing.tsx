@@ -38,6 +38,7 @@ export default function SamPresenceRing({ active }: SamPresenceRingProps) {
           position: absolute;
           inset: -4px;
           border-radius: 0;
+          padding: 3px;
           background: conic-gradient(
             from var(--ring-angle, 0deg),
             transparent 0%,
@@ -53,17 +54,14 @@ export default function SamPresenceRing({ active }: SamPresenceRingProps) {
             transparent 100%
           );
           animation: sam-ring-rotate 4s linear infinite;
-          mask-image: linear-gradient(#000, #000);
-          -webkit-mask-image: linear-gradient(#000, #000);
-        }
-
-        /* Cut out the center so only the border glows */
-        .sam-ring-inner::after {
-          content: '';
-          position: absolute;
-          inset: 3px;
-          background: var(--rune-bg);
-          border-radius: 0;
+          -webkit-mask:
+            linear-gradient(#fff 0 0) content-box,
+            linear-gradient(#fff 0 0);
+          mask:
+            linear-gradient(#fff 0 0) content-box,
+            linear-gradient(#fff 0 0);
+          -webkit-mask-composite: xor;
+          mask-composite: exclude;
         }
 
         @keyframes sam-ring-rotate {

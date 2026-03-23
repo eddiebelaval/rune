@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
 
 // ---------------------------------------------------------------------------
@@ -97,6 +97,7 @@ export default function VoiceInput({ onSend, disabled = false }: VoiceInputProps
   } = useVoiceInput();
 
   const [inputValue, setInputValue] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Sync voice transcript into the input field
   useEffect(() => {
@@ -123,7 +124,7 @@ export default function VoiceInput({ onSend, disabled = false }: VoiceInputProps
   }, [inputValue, disabled, onSend]);
 
   const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         handleSend();
@@ -131,6 +132,14 @@ export default function VoiceInput({ onSend, disabled = false }: VoiceInputProps
     },
     [handleSend],
   );
+
+  // Auto-resize textarea to fit content (1 line default, max ~6 lines)
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 144)}px`;
+  }, [inputValue]);
 
   const toggleMic = useCallback(async () => {
     if (isListening) {
@@ -156,7 +165,7 @@ export default function VoiceInput({ onSend, disabled = false }: VoiceInputProps
       )}
 
       <div
-        className="flex items-center gap-2 rounded-xl px-3 py-2"
+        className="flex items-end gap-2 rounded-xl px-3 py-2"
         style={{
           backgroundColor: 'var(--rune-surface)',
           border: '1px solid var(--rune-border)',
@@ -194,19 +203,22 @@ export default function VoiceInput({ onSend, disabled = false }: VoiceInputProps
           <MicIcon active={isListening} />
         </button>
 
-        {/* Text input */}
-        <input
-          type="text"
+        {/* Text input — textarea for multi-line paste support */}
+        <textarea
+          ref={textareaRef}
+          rows={1}
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={disabled}
-          placeholder={isListening ? 'Listening...' : 'Type or speak...'}
-          className="flex-1 bg-transparent outline-none text-sm placeholder:opacity-50"
+          placeholder={isListening ? 'Listening...' : 'Type, speak, or paste...'}
+          className="flex-1 bg-transparent outline-none text-sm placeholder:opacity-50 resize-none"
           style={{
             color: 'var(--rune-text)',
             fontFamily: 'var(--font-body, "Source Sans 3", sans-serif)',
             caretColor: 'var(--rune-gold)',
+            maxHeight: '144px',
+            overflowY: 'auto',
           }}
         />
 

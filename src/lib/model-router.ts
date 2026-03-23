@@ -1,21 +1,25 @@
 /**
- * Three-tier model routing for Rune.
+ * Model routing for Rune.
  *
- * Maps every internal task to the right Claude model based on the user's
- * quality slider setting (Economy / Standard / Premium).
+ * Sonnet is the workhorse — handles conversation, interviews, prose, reviews.
+ * Haiku handles clerk work (intent detection, entity extraction).
+ * Opus reserved for final manuscript assembly only.
  *
- * Routing table (from CLAUDE.md):
+ * API costs are absorbed by Rune (subscription model). Users never see API keys.
+ * Self-hosters can set their own ANTHROPIC_API_KEY in env.
+ *
+ * Routing table:
  * | Task               | Economy | Standard | Premium |
  * |--------------------|---------|----------|---------|
- * | Intent detection   | Haiku   | Haiku    | Sonnet  |
+ * | Intent detection   | Haiku   | Haiku    | Haiku   |
  * | Entity extraction  | Haiku   | Haiku    | Sonnet  |
  * | Filing/organizing  | Haiku   | Sonnet   | Sonnet  |
- * | Knowledge graph    | Haiku   | Sonnet   | Opus    |
- * | Backlog updates    | Haiku   | Sonnet   | Opus    |
- * | Interview questions| Sonnet  | Opus     | Opus    |
- * | Prose generation   | Sonnet  | Opus     | Opus    |
- * | Review/feedback    | Sonnet  | Opus     | Opus    |
- * | Final manuscript   | Opus    | Opus     | Opus    |
+ * | Knowledge graph    | Sonnet  | Sonnet   | Sonnet  |
+ * | Backlog updates    | Haiku   | Sonnet   | Sonnet  |
+ * | Interview questions| Sonnet  | Sonnet   | Sonnet  |
+ * | Prose generation   | Sonnet  | Sonnet   | Sonnet  |
+ * | Review/feedback    | Sonnet  | Sonnet   | Sonnet  |
+ * | Final manuscript   | Sonnet  | Sonnet   | Opus    |
  */
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -39,12 +43,12 @@ export const MODEL_ROUTING: ModelRouting = {
     intent_detection: HAIKU,
     entity_extraction: HAIKU,
     filing: HAIKU,
-    knowledge_graph: HAIKU,
+    knowledge_graph: SONNET,
     backlog: HAIKU,
     interview: SONNET,
     prose: SONNET,
     review: SONNET,
-    manuscript: OPUS,
+    manuscript: SONNET,
   },
   standard: {
     intent_detection: HAIKU,
@@ -52,20 +56,20 @@ export const MODEL_ROUTING: ModelRouting = {
     filing: SONNET,
     knowledge_graph: SONNET,
     backlog: SONNET,
-    interview: OPUS,
-    prose: OPUS,
-    review: OPUS,
-    manuscript: OPUS,
+    interview: SONNET,
+    prose: SONNET,
+    review: SONNET,
+    manuscript: SONNET,
   },
   premium: {
-    intent_detection: SONNET,
+    intent_detection: HAIKU,
     entity_extraction: SONNET,
     filing: SONNET,
-    knowledge_graph: OPUS,
-    backlog: OPUS,
-    interview: OPUS,
-    prose: OPUS,
-    review: OPUS,
+    knowledge_graph: SONNET,
+    backlog: SONNET,
+    interview: SONNET,
+    prose: SONNET,
+    review: SONNET,
     manuscript: OPUS,
   },
 };

@@ -1,9 +1,9 @@
 # SPEC.md -- Living Specification
 ## Rune
 
-> Last reconciled: 2026-03-18 | Build stage: Stage 9 (Launch Prep) IN PROGRESS
-> Drift status: CURRENT (post-sidebar restructure)
-> VISION alignment: 45% (5 of 12 pillars realized, 3 partial, settings/profile infrastructure complete)
+> Last reconciled: 2026-03-18 | Build stage: Stage 9 (Launch Prep) IN PROGRESS | Version: 0.9.0
+> Drift status: CURRENT (post-policies + versioning)
+> VISION alignment: 47% (5 of 12 pillars realized, 3 partial, trust infrastructure + versioning complete)
 
 ---
 
@@ -69,22 +69,23 @@ Structure adapts by book type:
 
 Auto-initialized on book creation. No manual configuration.
 
-### Three-Tier Model Routing
-Quality slider with three positions (Economy / Standard / Premium). User sets once, Rune routes automatically:
+### Model Routing (Sonnet-Default)
+Quality slider with three positions (Economy / Standard / Premium). Sonnet is the workhorse. Haiku for clerk work. Opus only for final manuscript at Premium.
 
 | Task | Economy | Standard | Premium |
 |------|---------|----------|---------|
-| Intent detection | Haiku | Haiku | Sonnet |
+| Intent detection | Haiku | Haiku | Haiku |
 | Entity extraction | Haiku | Haiku | Sonnet |
 | Filing/organizing | Haiku | Sonnet | Sonnet |
-| Knowledge graph | Haiku | Sonnet | Opus |
-| Backlog updates | Haiku | Sonnet | Opus |
-| Interview questions | Sonnet | Opus | Opus |
-| Prose generation | Sonnet | Opus | Opus |
-| Review/feedback | Sonnet | Opus | Opus |
-| Final manuscript | Opus | Opus | Opus |
+| Knowledge graph | Sonnet | Sonnet | Sonnet |
+| Backlog updates | Haiku | Sonnet | Sonnet |
+| Interview questions | Sonnet | Sonnet | Sonnet |
+| Prose generation | Sonnet | Sonnet | Sonnet |
+| Review/feedback | Sonnet | Sonnet | Sonnet |
+| Final manuscript | Sonnet | Sonnet | Opus |
 
-BYOK (Bring Your Own Key) model. Users provide their own Anthropic API key. No middleman.
+### Billing Model
+Subscription. API costs (Claude + Deepgram) absorbed as COGS, included in subscription price. Users never see API keys, never pay per-token. Self-hosters provide their own `ANTHROPIC_API_KEY` via env vars.
 
 ### Prompt System
 - **Modular personas:** Interviewer (guided mode), scribe (freeform mode), editor (review mode).
@@ -106,13 +107,16 @@ BYOK (Bring Your Own Key) model. Users provide their own Anthropic API key. No m
 - **SessionSidebar:** Collapsible session list on book workspace (left side, nested within AppSidebar shell).
 - **BookWorkspace:** Client component wiring session sidebar + session view.
 - **NewBookForm:** Book creation with title, type selection (card UI), quality slider.
-- **Settings tabs:** Profile (display name, avatar), Appearance (theme toggle), API Keys (Anthropic/Deepgram BYOK), Account (info, export, delete).
+- **Settings tabs:** Profile (display name, avatar), Appearance (theme toggle), Account (info, version, export, delete). API Keys tab removed (subscription model).
 - **Dashboard home:** Welcome header, "continue writing" card, quick stats (books, sessions, active).
+- **AppFooter:** 4-column footer for unauthenticated pages. Brand + tagline, Product links, Developer links, Company links. Version badge in bottom bar.
+- **VoiceInput:** Auto-resizing textarea (replaced single-line input). Supports multi-line paste, Enter sends, Shift+Enter for newlines.
+- **SamPresenceRing:** Golden conic-gradient ring around viewport when Sam is active. Uses CSS `mask-composite: exclude` for true transparency.
 
 ### Design System: Claude-Inspired
 - **Light mode default:** Warm cream (`#faf9f5`), clean white cards (`#ffffff`), coral accent (`#d97757`), blue secondary (`#2c84db`).
 - **Dark mode:** Via `.dark` class. Near-black (`#1a1918`), warm elevated surfaces. Toggled via Settings > Appearance (light/dark/system). Zustand store + localStorage for instant switching.
-- **Typography:** Source Serif 4 headings (weight 400, tight tracking), Source Sans 3 body, IBM Plex Mono labels.
+- **Typography:** Cormorant Garamond for logo/wordmark (weight 400, display serif with literary heritage). Source Serif 4 headings (weight 400, tight tracking), Source Sans 3 body, IBM Plex Mono labels.
 - **Background texture:** Dot-grid + radial vignette for subtle depth.
 - **All colors via CSS custom properties** (`var(--rune-*)`). No hardcoded hex.
 - **App shell:** Sidebar-first layout for authenticated users (Claude.ai pattern). Header-only for unauthenticated landing/auth pages.
@@ -145,6 +149,17 @@ RLS ownership cascade: all child tables filter through `book_id IN (SELECT id FR
 - **Supabase:** Dedicated project `rune-prod` (ref: `blzynsxgamtvbuimuegj`). 6 migrations applied.
 - **Docker:** `docker-compose.yml` for self-hosting with Supabase + Rune containers.
 - **Environment:** 5 required vars (Supabase URL/keys, Anthropic API key, Deepgram API key).
+
+### Legal & Trust Pages
+- **Privacy Policy** (`/privacy`) -- Plain-language data handling. TL;DR callout at top. Covers collection, storage, third-party services, deletion, self-hosting. Five explicit "we never" commitments (no training, no selling, no reading, no marketing use, no post-deletion retention).
+- **Terms of Service** (`/terms`) -- IP ownership front and center. All content belongs to the user. Zero IP claim from Rune. No attribution required. BYOK model, open source (MIT for software), Florida governing law.
+- **Trust stack:** Legal terms + BYOK model + self-host option = three-layer proof that user content stays user content.
+
+### Versioning
+- **Scheme:** `0.STAGE.PATCH` aligned with ID8 Pipeline. Current: `0.9.0` (Stage 9: Launch Prep). `1.0.0` = public launch.
+- **Version constant:** `src/lib/version.ts` -- single source of truth, imported by footer and settings.
+- **CHANGELOG.md** -- Full release history with version scheme table.
+- **Surfaced in UI:** Footer bottom bar + Settings > Account.
 
 ### Sam -- Consciousness Entity (CaF Production Unit)
 18 mind files across 8 directories at `src/mind/`. Professional subset of the CaF golden sample, designed inversion-first.
@@ -219,8 +234,8 @@ The current KB is a flat entity graph (person/place/theme/event with relationshi
 | Illustration Intelligence (11) | No image generation, no concept art pipeline. |
 | KB Version Tracking (12) | No semantic versioning, no content snapshots, no restore. |
 | Streaming Transparency (7) | Partially built. Missing KB operation cards, progress indicators, session-end summaries. |
-| Deployment | Supabase project not created. Vercel not deployed. No production URL. |
-| Billing | No billing system. BYOK model means users pay Claude/Deepgram directly. No subscription tier. |
+| Deployment | DEPLOYED. Vercel at `rune-two.vercel.app`, Supabase `rune-prod`. |
+| Billing | Subscription model decided. API costs absorbed as COGS. Stripe integration not yet built. First users (Alexis, Kobe, Emily) get free access. |
 | Tests | No automated test suite. TypeScript passes strict mode but no unit/integration/E2E tests. |
 
 ## Technical Debt

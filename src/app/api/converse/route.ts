@@ -173,9 +173,11 @@ export async function POST(
 
     // Session context — tells Sam the session number and whether this is first contact
     const isFirstMessage = !typedSession.raw_transcript;
+    const isOnboarding = typedBook.title === 'Untitled' && typedSession.session_number === 1 && isFirstMessage;
     const sessionContext = `<session-context>
 session_number: ${typedSession.session_number}
 is_first_message_in_session: ${isFirstMessage}
+is_onboarding: ${isOnboarding}
 pipeline_stage: ${pipelineStage}
 book_type: ${typedBook.book_type}
 book_title: ${typedBook.title}
