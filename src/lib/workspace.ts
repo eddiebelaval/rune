@@ -28,7 +28,12 @@ const WORKSPACE_TEMPLATES: Record<BookType, Record<Room, string[]>> = {
 // ---------------------------------------------------------------------------
 
 type WorkspaceFileInsert = Omit<WorkspaceFile, 'id' | 'created_at' | 'updated_at'>;
-type WorkspaceFileUpdate = Partial<Pick<WorkspaceFile, 'title' | 'content' | 'room' | 'category' | 'position'>>;
+type WorkspaceFileUpdate = Partial<
+  Pick<
+    WorkspaceFile,
+    'title' | 'content' | 'room' | 'category' | 'position' | 'source_session_id'
+  >
+>;
 
 export interface WorkspaceStructure {
   bookId: string;
@@ -48,6 +53,7 @@ export async function createWorkspaceFile(
   category: string,
   title: string,
   content?: string,
+  sourceSessionId?: string | null,
 ): Promise<WorkspaceFile> {
   const supabase = await createServerClient();
 
@@ -67,7 +73,7 @@ export async function createWorkspaceFile(
     category,
     title,
     content: content ?? '',
-    source_session_id: null,
+    source_session_id: sourceSessionId ?? null,
     position,
   };
 

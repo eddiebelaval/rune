@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
+import type { KnowledgeFileType } from '@/types/knowledge';
+import type { RuneStreamEvent } from '@/types/stream';
 
 // ---------------------------------------------------------------------------
 // useSession — Manages a Rune conversation session
@@ -13,14 +15,20 @@ export interface ConversationMessage {
   timestamp: string;
 }
 
+export interface SessionKBOperation {
+  id: string;
+  operationType: 'create' | 'update' | 'activate';
+  fileType: KnowledgeFileType;
+  title: string;
+  contentPreview: string;
+  status: 'done' | 'failed';
+}
+
 interface UseSessionReturn {
-  /** All messages in the current conversation. */
   messages: ConversationMessage[];
-  /** Send a user message and stream the AI response. */
+  kbOperations: SessionKBOperation[];
   sendMessage: (text: string) => Promise<void>;
-  /** Whether a response is currently being streamed. */
   isLoading: boolean;
-  /** Any error from the last sendMessage call. */
   error: string | null;
 }
 
@@ -31,16 +39,11 @@ function createMessageId(): string {
   return `msg-${Date.now()}-${messageCounter}`;
 }
 
-/**
- * Fire background post-session processing (synthesize + extract).
- * Non-blocking — results flow back via Supabase Realtime subscriptions.
- */
 function triggerPostSessionProcessing(
   bookId: string,
   sessionId: string,
   assistantResponse: string,
 ): void {
-  // Synthesize: generates session summary, backlog items, workspace files
   fetch('/api/synthesize', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -49,7 +52,6 @@ function triggerPostSessionProcessing(
     console.error('[useSession] Background synthesize failed:', err);
   });
 
-  // Extract: builds knowledge graph entities and relationships
   fetch('/api/extract', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -63,8 +65,34 @@ function triggerPostSessionProcessing(
   });
 }
 
+function parseStreamEvents(buffer: string): {
+  events: RuneStreamEvent[];
+  remainder: string;
+} {
+  const chunks = buffer.split('\n\n');
+  const remainder = chunks.pop() ?? '';
+  const events: RuneStreamEvent[] = [];
+
+  for (const chunk of chunks) {
+    const dataLine = chunk
+      .split('\n')
+      .find((line) => line.startsWith('data: '));
+
+    if (!dataLine) continue;
+
+    try {
+      events.push(JSON.parse(dataLine.slice(6)) as RuneStreamEvent);
+    } catch (error) {
+      console.error('[useSession] Failed to parse stream event:', error, dataLine);
+    }
+  }
+
+  return { events, remainder };
+}
+
 export function useSession(bookId: string, sessionId: string): UseSessionReturn {
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
+  const [kbOperations, setKbOperations] = useState<SessionKBOperation[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const exchangeCountRef = useRef(0);
@@ -74,7 +102,6 @@ export function useSession(bookId: string, sessionId: string): UseSessionReturn 
       setError(null);
       setIsLoading(true);
 
-      // Add the user message immediately
       const userMessage: ConversationMessage = {
         id: createMessageId(),
         role: 'user',
@@ -82,7 +109,6 @@ export function useSession(bookId: string, sessionId: string): UseSessionReturn 
         timestamp: new Date().toISOString(),
       };
 
-      // Create a placeholder for the assistant response
       const assistantMessageId = createMessageId();
       const assistantMessage: ConversationMessage = {
         id: assistantMessageId,
@@ -112,31 +138,58 @@ export function useSession(bookId: string, sessionId: string): UseSessionReturn 
           throw new Error('Response body is null — streaming not supported');
         }
 
-        // Read the streaming response
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let accumulated = '';
+        let buffer = '';
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
-          const chunk = decoder.decode(value, { stream: true });
-          accumulated += chunk;
+          buffer += decoder.decode(value, { stream: true });
+          const parsed = parseStreamEvents(buffer);
+          buffer = parsed.remainder;
 
-          // Update the assistant message with accumulated text
-          const currentAccumulated = accumulated;
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === assistantMessageId
-                ? { ...msg, content: currentAccumulated }
-                : msg,
-            ),
-          );
+          for (const event of parsed.events) {
+            if (event.type === 'text_delta') {
+              accumulated += event.text;
+              const currentAccumulated = accumulated;
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantMessageId
+                    ? { ...msg, content: currentAccumulated }
+                    : msg,
+                ),
+              );
+              continue;
+            }
+
+            if (event.type === 'kb_operation') {
+              setKbOperations((prev) => {
+                const next = [
+                  {
+                    id: event.id,
+                    operationType: event.operationType,
+                    fileType: event.fileType,
+                    title: event.title,
+                    contentPreview: event.contentPreview,
+                    status: event.status,
+                  },
+                  ...prev.filter((item) => item.id !== event.id),
+                ];
+
+                return next.slice(0, 6);
+              });
+              continue;
+            }
+
+            if (event.type === 'error') {
+              setError(event.message);
+            }
+          }
         }
 
-        // After streaming completes, trigger background processing
-        // every 3 exchanges to avoid excessive API calls
         exchangeCountRef.current += 1;
         if (exchangeCountRef.current % 3 === 0 && accumulated.length > 0) {
           triggerPostSessionProcessing(bookId, sessionId, accumulated);
@@ -144,8 +197,6 @@ export function useSession(bookId: string, sessionId: string): UseSessionReturn 
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to send message';
         setError(message);
-
-        // Remove the empty assistant placeholder on error
         setMessages((prev) => prev.filter((msg) => msg.id !== assistantMessageId));
       } finally {
         setIsLoading(false);
@@ -156,6 +207,7 @@ export function useSession(bookId: string, sessionId: string): UseSessionReturn 
 
   return {
     messages,
+    kbOperations,
     sendMessage,
     isLoading,
     error,

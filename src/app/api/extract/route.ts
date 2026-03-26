@@ -1,62 +1,56 @@
-/**
- * Entity extraction API route.
- *
- * Takes text from a conversation session and uses Claude to extract
- * structured entities (people, places, themes, events). Extracted entities
- * are persisted to the hierarchical KB (knowledge_files table).
- *
- * POST /api/extract
- * Body: { text: string, book_id: string, session_id: string, quality?: QualityLevel }
- * Returns: { entities: ExtractedEntity[] }
- */
-
-import { NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase';
-import { createModelClient } from '@/lib/model-router';
-import { KnowledgeBaseService } from '@/lib/database/knowledge-base';
-import { inferFolderAndScope } from '@/types/folder-system';
-import type { QualityLevel } from '@/types/database';
-import type { KnowledgeFileType } from '@/types/knowledge';
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+import { NextRequest, NextResponse } from 'next/server'
+import { createModelClient } from '@/lib/model-router'
+import { KnowledgeBaseService } from '@/lib/database/knowledge-base'
+import { inferFolderAndScope } from '@/types/folder-system'
+import {
+  jsonBadRequest,
+  jsonInternalError,
+  jsonTooManyRequests,
+  parseJsonBody,
+  requireAuthenticatedRouteContext,
+  requireOwnedBook,
+} from '@/lib/api/route'
+import {
+  buildRateLimitKey,
+  enforceRateLimit,
+  RATE_LIMITS,
+} from '@/lib/rate-limit'
+import { isValidText, isValidUUID } from '@/lib/validation'
+import type { QualityLevel } from '@/types/database'
+import type { KnowledgeFileType } from '@/types/knowledge'
 
 interface ExtractRequest {
-  text: string;
-  book_id: string;
-  session_id: string;
-  quality?: QualityLevel;
+  text: string
+  book_id: string
+  session_id: string
+  quality?: QualityLevel
 }
 
-type LegacyEntityType = 'person' | 'place' | 'theme' | 'event';
+type LegacyEntityType = 'person' | 'place' | 'theme' | 'event'
 
 interface ExtractedEntity {
-  name: string;
-  type: LegacyEntityType;
-  description: string;
-  is_new: boolean;
-  kb_file_type: KnowledgeFileType;
+  name: string
+  type: LegacyEntityType
+  description: string
+  is_new: boolean
+  kb_file_type: KnowledgeFileType
 }
 
 interface ExtractionResult {
-  entities: { name: string; type: string; description: string }[];
-  relationships: { from: string; to: string; type: string; description: string }[];
+  entities: { name: string; type: string; description: string }[]
+  relationships: { from: string; to: string; type: string; description: string }[]
 }
 
-// Map legacy entity types to KB file types
 const ENTITY_TO_KB_TYPE: Record<LegacyEntityType, KnowledgeFileType> = {
   person: 'characters',
   place: 'world-building',
   theme: 'thematic-through-lines',
   event: 'timeline',
-};
+}
 
-const VALID_ENTITY_TYPES: LegacyEntityType[] = ['person', 'place', 'theme', 'event'];
-
-// ---------------------------------------------------------------------------
-// Extraction prompt
-// ---------------------------------------------------------------------------
+const VALID_ENTITY_TYPES: LegacyEntityType[] = ['person', 'place', 'theme', 'event']
+const VALID_QUALITY_LEVELS: QualityLevel[] = ['economy', 'standard', 'premium']
+const DEFAULT_EXTRACTION_CONFIDENCE = 0.78
 
 const EXTRACTION_PROMPT = `You are an entity extractor for Sam, a voice-first book-writing companion on the Rune platform.
 
@@ -85,156 +79,169 @@ Respond with ONLY a JSON object, no other text:
   ]
 }
 
-If no entities are found, return: { "entities": [], "relationships": [] }`;
-
-// ---------------------------------------------------------------------------
-// Route handler
-// ---------------------------------------------------------------------------
+If no entities are found, return: { "entities": [], "relationships": [] }`
 
 export async function POST(
-  request: Request,
-): Promise<NextResponse<{ entities: ExtractedEntity[] } | { error: string }>> {
+  request: NextRequest
+): Promise<NextResponse> {
   try {
-    // Authenticate
-    const supabase = await createServerClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const context = await requireAuthenticatedRouteContext()
+    if (context instanceof NextResponse) {
+      return context
     }
 
-    // Parse body
-    let body: ExtractRequest;
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    const { supabase, user } = context
+    const limit = enforceRateLimit(
+      buildRateLimitKey(request, 'extract:create', user.id),
+      RATE_LIMITS.extract
+    )
+
+    if (!limit.allowed) {
+      return jsonTooManyRequests({
+        ...limit,
+        error: 'Too many extraction requests. Please wait a moment before trying again.',
+      })
     }
 
-    const { text, book_id, session_id } = body;
-
-    if (!text || typeof text !== 'string') {
-      return NextResponse.json({ error: 'Missing required field: text' }, { status: 400 });
-    }
-    if (!book_id || typeof book_id !== 'string') {
-      return NextResponse.json({ error: 'Missing required field: book_id' }, { status: 400 });
-    }
-    if (!session_id || typeof session_id !== 'string') {
-      return NextResponse.json({ error: 'Missing required field: session_id' }, { status: 400 });
+    const parsed = await parseJsonBody<ExtractRequest>(request)
+    if (!parsed.ok) {
+      return parsed.response
     }
 
-    const quality: QualityLevel = body.quality ?? 'standard';
+    const { text, book_id, session_id, quality = 'standard' } = parsed.data
 
-    // Verify book ownership
-    const { data: book, error: bookError } = await supabase
-      .from('books')
-      .select('id')
-      .eq('id', book_id)
-      .eq('user_id', user.id)
-      .single();
-
-    if (bookError || !book) {
-      return NextResponse.json({ error: 'Book not found' }, { status: 404 });
+    if (!isValidText(text)) {
+      return jsonBadRequest('text must be 1-100,000 characters')
+    }
+    if (!book_id || !isValidUUID(book_id)) {
+      return jsonBadRequest('book_id is required')
+    }
+    if (!session_id || !isValidUUID(session_id)) {
+      return jsonBadRequest('session_id is required')
+    }
+    if (!VALID_QUALITY_LEVELS.includes(quality)) {
+      return jsonBadRequest(
+        `quality must be one of: ${VALID_QUALITY_LEVELS.join(', ')}`
+      )
     }
 
-    // Call Claude for entity extraction
-    const { client, model } = createModelClient('entity_extraction', quality);
+    const ownedBook = await requireOwnedBook(supabase, user.id, book_id)
+    if (ownedBook instanceof NextResponse) {
+      return ownedBook
+    }
 
+    const { client, model } = createModelClient('entity_extraction', quality)
     const response = await client.messages.create({
       model,
       max_tokens: 1024,
       temperature: 0,
       system: EXTRACTION_PROMPT,
       messages: [{ role: 'user', content: text }],
-    });
+    })
 
-    const textBlock = response.content.find((block) => block.type === 'text');
+    const textBlock = response.content.find((block) => block.type === 'text')
     if (!textBlock || textBlock.type !== 'text') {
-      return NextResponse.json({ error: 'No response from extraction model' }, { status: 500 });
+      throw new Error('No response from extraction model')
     }
 
-    // Parse extraction result
-    let extraction: ExtractionResult;
+    let extraction: ExtractionResult
     try {
-      extraction = JSON.parse(textBlock.text.trim());
+      extraction = JSON.parse(textBlock.text.trim())
     } catch {
-      const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
+      const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/)
       if (!jsonMatch) {
-        return NextResponse.json({ error: 'Extraction model returned invalid JSON' }, { status: 500 });
+        throw new Error('Extraction model returned invalid JSON')
       }
-      extraction = JSON.parse(jsonMatch[0]);
+      extraction = JSON.parse(jsonMatch[0]) as ExtractionResult
     }
 
-    // Get existing KB files for deduplication
-    const existingFiles = await KnowledgeBaseService.getFiles(user.id, { book_id });
+    const existingFiles = await KnowledgeBaseService.getFiles(user.id, { book_id })
     const existingByTitle = new Map(
-      existingFiles.map((f) => [f.title.toLowerCase(), f]),
-    );
+      existingFiles.map((file) => [file.title.toLowerCase(), file])
+    )
 
-    // Process extracted entities -> KB files
-    const resultEntities: ExtractedEntity[] = [];
+    const resultEntities: ExtractedEntity[] = []
 
     for (const extracted of extraction.entities ?? []) {
-      if (!VALID_ENTITY_TYPES.includes(extracted.type as LegacyEntityType)) continue;
+      if (!VALID_ENTITY_TYPES.includes(extracted.type as LegacyEntityType)) {
+        continue
+      }
 
-      const entityType = extracted.type as LegacyEntityType;
-      const kbFileType = ENTITY_TO_KB_TYPE[entityType];
-      const normalizedTitle = extracted.name.toLowerCase();
-      const existing = existingByTitle.get(normalizedTitle);
+      const entityType = extracted.type as LegacyEntityType
+      const kbFileType = ENTITY_TO_KB_TYPE[entityType]
+      const normalizedTitle = extracted.name.toLowerCase()
+      const existing = existingByTitle.get(normalizedTitle)
 
       if (existing) {
-        // Entity exists in KB — append new info
-        const updatedContent = existing.content + '\n\n' + extracted.description;
-        await KnowledgeBaseService.updateFile(existing.id, { content: updatedContent });
+        const updated = await KnowledgeBaseService.updateFile(existing.id, {
+          content: `${existing.content}\n\n${extracted.description}`.trim(),
+          metadata: {
+            extraction_confidence: DEFAULT_EXTRACTION_CONFIDENCE,
+            source_session: session_id,
+            last_interview_session: session_id,
+          },
+        })
 
         resultEntities.push({
-          name: existing.title,
+          name: updated.title,
           type: entityType,
-          description: existing.content,
+          description: updated.content,
           is_new: false,
           kb_file_type: kbFileType,
-        });
-      } else {
-        // New entity — create KB file
-        const inferred = inferFolderAndScope(kbFileType);
-        const newFile = await KnowledgeBaseService.createFile(user.id, {
-          book_id,
-          title: extracted.name,
-          content: extracted.description,
-          file_type: kbFileType,
-          scope: inferred.scope,
-          folder_type: inferred.folder_type,
-          folder_path: inferred.folder_path,
-          is_active: true,
-          source_type: 'ai-generated',
-          metadata: { extraction_confidence: 0.8, source_session: session_id },
-        });
-
-        existingByTitle.set(normalizedTitle, newFile);
-        resultEntities.push({
-          name: newFile.title,
-          type: entityType,
-          description: newFile.content,
-          is_new: true,
-          kb_file_type: kbFileType,
-        });
+        })
+        existingByTitle.set(normalizedTitle, updated)
+        continue
       }
+
+      const inferred = inferFolderAndScope(kbFileType)
+      const newFile = await KnowledgeBaseService.createFile(user.id, {
+        book_id,
+        title: extracted.name,
+        content: extracted.description,
+        file_type: kbFileType,
+        scope: inferred.scope,
+        folder_type: inferred.folder_type,
+        folder_path: inferred.folder_path,
+        is_active: true,
+        source_type: 'ai-generated',
+        metadata: {
+          extraction_confidence: DEFAULT_EXTRACTION_CONFIDENCE,
+          source_session: session_id,
+          last_interview_session: session_id,
+        },
+      })
+
+      existingByTitle.set(normalizedTitle, newFile)
+      resultEntities.push({
+        name: newFile.title,
+        type: entityType,
+        description: newFile.content,
+        is_new: true,
+        kb_file_type: kbFileType,
+      })
     }
 
-    // Process relationships — append to relationships-map KB file
     if (extraction.relationships && extraction.relationships.length > 0) {
       const relContent = extraction.relationships
-        .map((rel) => `${rel.from} --[${rel.type}]--> ${rel.to}: ${rel.description}`)
-        .join('\n');
+        .map(
+          (relationship) =>
+            `${relationship.from} --[${relationship.type}]--> ${relationship.to}: ${relationship.description}`
+        )
+        .join('\n')
 
-      const existingRelMap = existingFiles.find((f) => f.file_type === 'relationships-map');
+      const existingRelMap = existingFiles.find(
+        (file) => file.file_type === 'relationships-map'
+      )
+
       if (existingRelMap) {
         await KnowledgeBaseService.updateFile(existingRelMap.id, {
-          content: existingRelMap.content + '\n' + relContent,
-        });
+          content: `${existingRelMap.content}\n${relContent}`.trim(),
+          metadata: {
+            extraction_confidence: DEFAULT_EXTRACTION_CONFIDENCE,
+            source_session: session_id,
+            last_interview_session: session_id,
+          },
+        })
       } else {
         await KnowledgeBaseService.createFile(user.id, {
           book_id,
@@ -243,14 +250,17 @@ export async function POST(
           file_type: 'relationships-map',
           is_active: true,
           source_type: 'ai-generated',
-        });
+          metadata: {
+            extraction_confidence: DEFAULT_EXTRACTION_CONFIDENCE,
+            source_session: session_id,
+            last_interview_session: session_id,
+          },
+        })
       }
     }
 
-    return NextResponse.json({ entities: resultEntities });
+    return NextResponse.json({ entities: resultEntities })
   } catch (error) {
-    console.error('[extract] Entity extraction failed:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ error: `Extraction failed: ${errorMessage}` }, { status: 500 });
+    return jsonInternalError('extract', error)
   }
 }

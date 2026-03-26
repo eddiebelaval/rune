@@ -1,44 +1,39 @@
-/**
- * Revise API route — applies an AI-driven revision to a workspace file.
- *
- * Takes an instruction (e.g., "tighten the opening paragraph" or
- * "make the dialogue feel more natural"), fetches the current content,
- * asks Opus (via model router, 'review' task) to revise it, saves a
- * before/after snapshot, and updates the workspace file.
- *
- * POST /api/revise
- * Body: { book_id: string, file_id: string, instruction: string, quality?: QualityLevel }
- * Returns: { revision_id: string, content_before: string, content_after: string, note: string }
- */
-
-import { NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase';
-import { createModelClient } from '@/lib/model-router';
-import { createRevision } from '@/lib/revisions';
-import type { QualityLevel, Book, WorkspaceFile } from '@/types/database';
-
-// ---------------------------------------------------------------------------
-// Request / Response types
-// ---------------------------------------------------------------------------
+import { NextRequest, NextResponse } from 'next/server'
+import { createModelClient } from '@/lib/model-router'
+import { createRevision } from '@/lib/revisions'
+import {
+  jsonBadRequest,
+  jsonInternalError,
+  jsonTooManyRequests,
+  parseJsonBody,
+  requireAuthenticatedRouteContext,
+  requireOwnedBook,
+  requireOwnedWorkspaceFile,
+} from '@/lib/api/route'
+import {
+  buildRateLimitKey,
+  enforceRateLimit,
+  RATE_LIMITS,
+} from '@/lib/rate-limit'
+import { isValidUUID } from '@/lib/validation'
+import type { Book, QualityLevel, WorkspaceFile } from '@/types/database'
 
 interface ReviseRequest {
-  book_id: string;
-  file_id: string;
-  instruction: string;
-  session_id?: string;
-  quality?: QualityLevel;
+  book_id: string
+  file_id: string
+  instruction: string
+  session_id?: string
+  quality?: QualityLevel
 }
 
 interface ReviseResponse {
-  revision_id: string;
-  content_before: string;
-  content_after: string;
-  note: string;
+  revision_id: string
+  content_before: string
+  content_after: string
+  note: string
 }
 
-// ---------------------------------------------------------------------------
-// Revision system prompt
-// ---------------------------------------------------------------------------
+const VALID_QUALITY_LEVELS: QualityLevel[] = ['economy', 'standard', 'premium']
 
 const REVISION_SYSTEM_PROMPT = `You are Rune, a ghost writer revising a workspace file based on the author's instruction.
 
@@ -52,100 +47,77 @@ RULES:
 - Never add content the author didn't ask for.
 - Never remove content unless the instruction implies it (e.g., "cut the second paragraph").
 - Maintain formatting consistency with the original content.
-- Output ONLY the revised text. Nothing else.`;
-
-// ---------------------------------------------------------------------------
-// Route handler
-// ---------------------------------------------------------------------------
+- Output ONLY the revised text. Nothing else.`
 
 export async function POST(
-  request: Request,
-): Promise<NextResponse<ReviseResponse | { error: string }>> {
+  request: NextRequest
+): Promise<NextResponse> {
   try {
-    // Authenticate
-    const supabase = await createServerClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const context = await requireAuthenticatedRouteContext()
+    if (context instanceof NextResponse) {
+      return context
     }
 
-    // Parse body
-    let body: ReviseRequest;
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    const { supabase, user } = context
+    const limit = enforceRateLimit(
+      buildRateLimitKey(request, 'revise:create', user.id),
+      RATE_LIMITS.revise
+    )
+
+    if (!limit.allowed) {
+      return jsonTooManyRequests({
+        ...limit,
+        error: 'Too many revision requests. Please wait a moment before trying again.',
+      })
     }
 
-    const { book_id, file_id, instruction, session_id } = body;
-
-    if (!book_id || typeof book_id !== 'string') {
-      return NextResponse.json(
-        { error: 'Missing required field: book_id' },
-        { status: 400 },
-      );
-    }
-    if (!file_id || typeof file_id !== 'string') {
-      return NextResponse.json(
-        { error: 'Missing required field: file_id' },
-        { status: 400 },
-      );
-    }
-    if (!instruction || typeof instruction !== 'string') {
-      return NextResponse.json(
-        { error: 'Missing required field: instruction' },
-        { status: 400 },
-      );
+    const parsed = await parseJsonBody<ReviseRequest>(request)
+    if (!parsed.ok) {
+      return parsed.response
     }
 
-    const quality: QualityLevel = body.quality ?? 'standard';
+    const { book_id, file_id, instruction, session_id, quality = 'standard' } = parsed.data
 
-    // Verify book ownership
-    const { data: book, error: bookError } = await supabase
-      .from('books')
-      .select('*')
-      .eq('id', book_id)
-      .eq('user_id', user.id)
-      .single();
-
-    if (bookError || !book) {
-      return NextResponse.json({ error: 'Book not found' }, { status: 404 });
+    if (!book_id || !isValidUUID(book_id)) {
+      return jsonBadRequest('book_id is required')
+    }
+    if (!file_id || !isValidUUID(file_id)) {
+      return jsonBadRequest('file_id is required')
+    }
+    if (!instruction || typeof instruction !== 'string' || instruction.trim().length === 0) {
+      return jsonBadRequest('instruction is required')
+    }
+    if (session_id !== undefined && !isValidUUID(session_id)) {
+      return jsonBadRequest('session_id must be a valid UUID when provided')
+    }
+    if (!VALID_QUALITY_LEVELS.includes(quality)) {
+      return jsonBadRequest(
+        `quality must be one of: ${VALID_QUALITY_LEVELS.join(', ')}`
+      )
     }
 
-    const typedBook = book as Book;
-
-    // Fetch the workspace file and verify it belongs to this book
-    const { data: file, error: fileError } = await supabase
-      .from('workspace_files')
-      .select('*')
-      .eq('id', file_id)
-      .eq('book_id', book_id)
-      .single();
-
-    if (fileError || !file) {
-      return NextResponse.json(
-        { error: 'Workspace file not found' },
-        { status: 404 },
-      );
+    const ownedBook = await requireOwnedBook(supabase, user.id, book_id, '*')
+    if (ownedBook instanceof NextResponse) {
+      return ownedBook
     }
 
-    const typedFile = file as WorkspaceFile;
-    const contentBefore = typedFile.content;
+    const typedBook = ownedBook as unknown as Book
+    const ownedFile = await requireOwnedWorkspaceFile(supabase, user.id, file_id, '*')
+    if (ownedFile instanceof NextResponse) {
+      return ownedFile
+    }
 
+    const typedFile = ownedFile as unknown as WorkspaceFile
+    if (typedFile.book_id !== book_id) {
+      return NextResponse.json({ error: 'Workspace file not found' }, { status: 404 })
+    }
+
+    const contentBefore = typedFile.content
     if (!contentBefore || contentBefore.trim().length === 0) {
-      return NextResponse.json(
-        { error: 'Cannot revise an empty file' },
-        { status: 400 },
-      );
+      return jsonBadRequest('Cannot revise an empty file')
     }
 
-    // Use Opus (via model router, 'review' task) to revise the content
-    const { client, model } = createModelClient('review', quality);
-
+    const { client, model } = createModelClient('review', quality)
     const response = await client.messages.create({
       model,
       max_tokens: 4096,
@@ -166,51 +138,45 @@ export async function POST(
           ].join('\n'),
         },
       ],
-    });
+    })
 
-    // Extract the revised content
-    const textBlock = response.content.find((block) => block.type === 'text');
+    const textBlock = response.content.find((block) => block.type === 'text')
     if (!textBlock || textBlock.type !== 'text') {
-      return NextResponse.json(
-        { error: 'No response from revision model' },
-        { status: 500 },
-      );
+      throw new Error('No response from revision model')
     }
 
-    const contentAfter = textBlock.text.trim();
+    const contentAfter = textBlock.text.trim()
+    const note = `Revision: ${instruction}`
 
-    // Build a concise revision note
-    const note = `Revision: ${instruction}`;
-
-    // Save the revision snapshot and update the workspace file in parallel
-    const [revision] = await Promise.all([
+    const [{ data: updatedFile, error: updateError }, revision] = await Promise.all([
+      supabase
+        .from('workspace_files')
+        .update({ content: contentAfter })
+        .eq('id', file_id)
+        .eq('book_id', book_id)
+        .select('id')
+        .single(),
       createRevision(
         book_id,
         file_id,
         contentBefore,
         contentAfter,
         session_id,
-        note,
+        note
       ),
-      supabase
-        .from('workspace_files')
-        .update({ content: contentAfter })
-        .eq('id', file_id),
-    ]);
+    ])
+
+    if (updateError || !updatedFile) {
+      throw new Error(updateError?.message ?? 'Failed to update workspace file')
+    }
 
     return NextResponse.json({
       revision_id: revision.id,
       content_before: contentBefore,
       content_after: contentAfter,
       note,
-    });
+    })
   } catch (error) {
-    console.error('[revise] Revision failed:', error);
-    const errorMessage =
-      error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json(
-      { error: `Revision failed: ${errorMessage}` },
-      { status: 500 },
-    );
+    return jsonInternalError('revise', error)
   }
 }

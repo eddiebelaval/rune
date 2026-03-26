@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { createClient } from '@/lib/supabase-browser';
 import type { KnowledgeEntity, EntityRelationship, EntityType } from '@/types/database';
 
 // ---------------------------------------------------------------------------
@@ -138,28 +137,39 @@ export default function KnowledgeGraph({ bookId }: KnowledgeGraphProps) {
     let cancelled = false;
 
     async function load() {
-      const supabase = createClient();
+      setLoading(true);
 
-      const [entitiesResult, relationshipsResult] = await Promise.all([
-        supabase
-          .from('knowledge_entities')
-          .select('*')
-          .eq('book_id', bookId)
-          .order('mention_count', { ascending: false }),
-        supabase
-          .from('entity_relationships')
-          .select('*')
-          .eq('book_id', bookId),
-      ]);
+      try {
+        const response = await fetch(`/api/knowledge-graph?bookId=${encodeURIComponent(bookId)}`);
+        if (!response.ok) {
+          if (!cancelled) {
+            setEntities([]);
+            setRelationships([]);
+            setLoading(false);
+          }
+          return;
+        }
 
-      if (cancelled) return;
+        const payload = await response.json() as {
+          entities: KnowledgeEntity[];
+          relationships: EntityRelationship[];
+        };
 
-      setEntities((entitiesResult.data ?? []) as KnowledgeEntity[]);
-      setRelationships((relationshipsResult.data ?? []) as EntityRelationship[]);
-      setLoading(false);
+        if (cancelled) return;
+
+        setEntities(payload.entities ?? []);
+        setRelationships(payload.relationships ?? []);
+        setLoading(false);
+      } catch {
+        if (!cancelled) {
+          setEntities([]);
+          setRelationships([]);
+          setLoading(false);
+        }
+      }
     }
 
-    load();
+    void load();
     return () => { cancelled = true; };
   }, [bookId]);
 
@@ -187,6 +197,16 @@ export default function KnowledgeGraph({ bookId }: KnowledgeGraphProps) {
       (r) => r.from_entity_id === selectedId || r.to_entity_id === selectedId,
     );
   }, [selectedId, relationships]);
+
+  const selectedProvenance = useMemo(() => {
+    if (!selected) return null;
+    const provenance = selected.attributes?.provenance;
+    if (!provenance || typeof provenance !== 'object') {
+      return null;
+    }
+
+    return provenance as Record<string, unknown>;
+  }, [selected]);
 
   const handleEntityClick = useCallback((id: string) => {
     setSelectedId((prev) => (prev === id ? null : id));
@@ -405,7 +425,29 @@ export default function KnowledgeGraph({ bookId }: KnowledgeGraphProps) {
             <span className="label-mono">
               {selected.mention_count} mention{selected.mention_count !== 1 ? 's' : ''}
             </span>
+            {typeof selected.attributes?.confidence === 'number' && (
+              <span className="label-mono">
+                {Math.round(Number(selected.attributes.confidence) * 100)}% confidence
+              </span>
+            )}
+            {typeof selected.attributes?.current_semantic_version === 'string' && (
+              <span className="label-mono">
+                v{String(selected.attributes.current_semantic_version)}
+              </span>
+            )}
           </div>
+
+          {selectedProvenance && (
+            <p className="mb-3 text-xs" style={{ color: 'var(--rune-muted)' }}>
+              Source{' '}
+              {typeof selected.attributes.source_type === 'string'
+                ? String(selected.attributes.source_type)
+                : 'unknown'}
+              {typeof selectedProvenance.source_session_id === 'string'
+                ? ` • session ${selectedProvenance.source_session_id}`
+                : ''}
+            </p>
+          )}
 
           {selectedRelationships.length > 0 && (
             <div>

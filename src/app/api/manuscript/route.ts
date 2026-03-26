@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase';
 import { assembleManuscript } from '@/lib/manuscript';
+import {
+  jsonBadRequest,
+  jsonInternalError,
+  jsonNotFound,
+  requireAuthenticatedRouteContext,
+} from '@/lib/api/route';
 
 /**
  * GET /api/manuscript?bookId=<uuid>          -- returns assembled manuscript + stats (JSON)
@@ -9,22 +14,17 @@ import { assembleManuscript } from '@/lib/manuscript';
  * Auth required. Verifies the authenticated user owns the book.
  */
 export async function GET(request: NextRequest) {
-  const supabase = await createServerClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const context = await requireAuthenticatedRouteContext();
+  if (context instanceof NextResponse) {
+    return context;
   }
 
+  const { supabase, user } = context;
   const bookId = request.nextUrl.searchParams.get('bookId');
   if (!bookId) {
-    return NextResponse.json(
-      { error: 'bookId query parameter is required' },
-      { status: 400 },
-    );
+    return jsonBadRequest('bookId query parameter is required');
   }
 
-  // Verify the user owns this book
   const { data: book, error: bookError } = await supabase
     .from('books')
     .select('id, title')
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     .single();
 
   if (bookError || !book) {
-    return NextResponse.json({ error: 'Book not found' }, { status: 404 });
+    return jsonNotFound('Book not found');
   }
 
   try {
@@ -41,7 +41,6 @@ export async function GET(request: NextRequest) {
     const format = request.nextUrl.searchParams.get('format');
 
     if (format === 'markdown') {
-      // Build a markdown document with chapter headings
       const markdownParts: string[] = [];
       markdownParts.push(`# ${(book as { title: string }).title}\n`);
 
@@ -50,12 +49,10 @@ export async function GET(request: NextRequest) {
         if (chapter.content.length > 0) {
           markdownParts.push(chapter.content);
         }
-        markdownParts.push(''); // blank line between chapters
+        markdownParts.push('');
       }
 
       const markdownText = markdownParts.join('\n');
-
-      // Sanitize filename: lowercase, replace spaces/special chars
       const safeTitle = (book as { title: string }).title
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
@@ -70,7 +67,6 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Default: return JSON
     return NextResponse.json({
       bookId: manuscript.bookId,
       chapters: manuscript.chapters.map((ch) => ({
@@ -81,8 +77,7 @@ export async function GET(request: NextRequest) {
       })),
       stats: manuscript.stats,
     });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to assemble manuscript';
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch (error) {
+    return jsonInternalError('manuscript', error);
   }
 }

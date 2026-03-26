@@ -9,28 +9,48 @@
  */
 
 import { NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase';
+import {
+  jsonInternalError,
+  jsonTooManyRequests,
+  requireAuthenticatedRouteContext,
+} from '@/lib/api/route';
+import {
+  buildRateLimitKey,
+  enforceRateLimit,
+  RATE_LIMITS,
+} from '@/lib/rate-limit';
 
-export async function GET(): Promise<NextResponse<{ token: string } | { error: string }>> {
-  // Authenticate
-  const supabase = await createServerClient();
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
+export async function GET(
+  request: Request,
+): Promise<NextResponse<{ token: string } | { error: string }>> {
+  try {
+    const context = await requireAuthenticatedRouteContext();
+    if (context instanceof NextResponse) {
+      return context;
+    }
 
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const token = process.env.DEEPGRAM_API_KEY;
-  if (!token) {
-    console.error('[deepgram-token] DEEPGRAM_API_KEY is not configured');
-    return NextResponse.json(
-      { error: 'Deepgram is not configured' },
-      { status: 500 },
+    const limit = enforceRateLimit(
+      buildRateLimitKey(request, 'deepgram-token', context.user.id),
+      RATE_LIMITS.deepgramToken,
     );
-  }
 
-  return NextResponse.json({ token });
+    if (!limit.allowed) {
+      return jsonTooManyRequests({
+        ...limit,
+        error: 'Too many Deepgram token requests',
+      });
+    }
+
+    const token = process.env.DEEPGRAM_API_KEY;
+    if (!token) {
+      return NextResponse.json(
+        { error: 'Deepgram is not configured' },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({ token });
+  } catch (error) {
+    return jsonInternalError('deepgram-token', error);
+  }
 }

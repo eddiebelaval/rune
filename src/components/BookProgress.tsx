@@ -1,9 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { createClient } from '@/lib/supabase-browser';
-import { useRouter } from 'next/navigation';
-import type { BacklogItem, BacklogItemType, EntityType, KnowledgeEntity, Session } from '@/types/database';
+import type { BacklogItem, BacklogItemType, EntityType, Session } from '@/types/database';
 
 // ---------------------------------------------------------------------------
 // BookProgress -- Dashboard showing book health with stat cards
@@ -54,11 +52,17 @@ const ENTITY_TYPES: EntityType[] = ['person', 'place', 'theme', 'event'];
 export default function BookProgress({ bookId }: BookProgressProps) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [manuscriptStats, setManuscriptStats] = useState<ManuscriptStats | null>(null);
-  const [entities, setEntities] = useState<KnowledgeEntity[]>([]);
+  const [entityCounts, setEntityCounts] = useState<Record<EntityType, number>>({
+    person: 0,
+    place: 0,
+    theme: 0,
+    event: 0,
+  });
+  const [averageConfidence, setAverageConfidence] = useState<number | null>(null);
+  const [unresolvedCount, setUnresolvedCount] = useState(0);
   const [backlogItems, setBacklogItems] = useState<BacklogItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const router = useRouter();
 
   const handleBacklogAction = useCallback(async (id: string, action: 'address' | 'dismiss') => {
     try {
@@ -79,51 +83,32 @@ export default function BookProgress({ bookId }: BookProgressProps) {
     setError(null);
 
     try {
-      const supabase = createClient();
-
-      // Fetch all data in parallel
-      const [sessionsResult, manuscriptResult, entitiesResult, backlogResult] =
-        await Promise.all([
-          supabase
-            .from('sessions')
-            .select('*')
-            .eq('book_id', bookId)
-            .order('session_number', { ascending: true }),
-          fetch(`/api/manuscript?bookId=${encodeURIComponent(bookId)}`).then(
-            async (res) => {
-              if (!res.ok) return null;
-              return res.json() as Promise<{ stats: ManuscriptStats }>;
-            },
-          ),
-          supabase
-            .from('knowledge_entities')
-            .select('*')
-            .eq('book_id', bookId),
-          supabase
-            .from('backlog_items')
-            .select('*')
-            .eq('book_id', bookId)
-            .eq('status', 'open'),
-        ]);
-
-      if (sessionsResult.error) {
-        throw new Error(sessionsResult.error.message);
-      }
-      setSessions((sessionsResult.data ?? []) as Session[]);
-
-      if (manuscriptResult) {
-        setManuscriptStats(manuscriptResult.stats);
+      const response = await fetch(`/api/book-progress?bookId=${encodeURIComponent(bookId)}`);
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error ?? 'Failed to load book progress');
       }
 
-      if (entitiesResult.error) {
-        throw new Error(entitiesResult.error.message);
-      }
-      setEntities((entitiesResult.data ?? []) as KnowledgeEntity[]);
+      const data = await response.json() as {
+        sessions: Session[];
+        manuscriptStats: ManuscriptStats | null;
+        entityCounts: Record<EntityType, number>;
+        backlogItems: BacklogItem[];
+        unresolvedCount: number;
+        averageConfidence: number | null;
+      };
 
-      if (backlogResult.error) {
-        throw new Error(backlogResult.error.message);
-      }
-      setBacklogItems((backlogResult.data ?? []) as BacklogItem[]);
+      setSessions(data.sessions ?? []);
+      setManuscriptStats(data.manuscriptStats);
+      setEntityCounts(data.entityCounts ?? {
+        person: 0,
+        place: 0,
+        theme: 0,
+        event: 0,
+      });
+      setBacklogItems(data.backlogItems ?? []);
+      setUnresolvedCount(data.unresolvedCount ?? 0);
+      setAverageConfidence(data.averageConfidence ?? null);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'Failed to load book progress';
@@ -138,18 +123,6 @@ export default function BookProgress({ bookId }: BookProgressProps) {
   }, [fetchData]);
 
   // Compute derived stats
-  const entityCountsByType: Record<EntityType, number> = {
-    person: 0,
-    place: 0,
-    theme: 0,
-    event: 0,
-  };
-  for (const entity of entities) {
-    if (entity.entity_type in entityCountsByType) {
-      entityCountsByType[entity.entity_type] += 1;
-    }
-  }
-
   const backlogCountsByType: Record<BacklogItemType, number> = {
     question: 0,
     contradiction: 0,
@@ -275,7 +248,7 @@ export default function BookProgress({ bookId }: BookProgressProps) {
 
       {/* --- Entities discovered --- */}
       <Section title="Entities Discovered">
-        {entities.length === 0 ? (
+        {Object.values(entityCounts).every((count) => count === 0) ? (
           <p
             className="text-xs italic"
             style={{ color: 'var(--rune-muted)' }}
@@ -288,10 +261,21 @@ export default function BookProgress({ bookId }: BookProgressProps) {
               <MiniStat
                 key={type}
                 label={ENTITY_TYPE_LABELS[type]}
-                value={entityCountsByType[type]}
+                value={entityCounts[type]}
               />
             ))}
           </div>
+        )}
+        {(averageConfidence !== null || unresolvedCount > 0) && (
+          <p
+            className="mt-3 text-xs"
+            style={{ color: 'var(--rune-muted)' }}
+          >
+            {averageConfidence !== null
+              ? `Average extraction confidence ${Math.round(averageConfidence * 100)}%`
+              : 'Confidence scores will appear as Rune builds more structured knowledge.'}
+            {unresolvedCount > 0 ? ` • ${unresolvedCount} unresolved knowledge nodes` : ''}
+          </p>
         )}
       </Section>
 
