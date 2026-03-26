@@ -1,67 +1,59 @@
-/**
- * Session synthesis API route.
- *
- * After a conversation session ends, this route analyzes the raw transcript
- * to produce a structured synthesis: session summary, entity extraction cues,
- * backlog items (questions, contradictions, thin spots), and workspace file
- * suggestions.
- *
- * POST /api/synthesize
- * Body: { book_id: string, session_id: string, quality?: QualityLevel }
- * Returns: { summary, entities, backlog_items, workspace_files }
- */
-
-import { NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase';
-import { createModelClient } from '@/lib/model-router';
-import { addBacklogItem } from '@/lib/backlog';
-import { createWorkspaceFile } from '@/lib/workspace';
+import { NextRequest, NextResponse } from 'next/server'
+import { addBacklogItem } from '@/lib/backlog'
+import { createModelClient } from '@/lib/model-router'
+import { createWorkspaceFile } from '@/lib/workspace'
+import {
+  jsonBadRequest,
+  jsonInternalError,
+  jsonTooManyRequests,
+  parseJsonBody,
+  requireAuthenticatedRouteContext,
+  requireOwnedBook,
+} from '@/lib/api/route'
+import {
+  buildRateLimitKey,
+  enforceRateLimit,
+  RATE_LIMITS,
+} from '@/lib/rate-limit'
+import { isValidUUID } from '@/lib/validation'
 import type {
-  QualityLevel,
-  Book,
-  Session,
   BacklogItemType,
+  Book,
+  QualityLevel,
   Room,
-} from '@/types/database';
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+  Session,
+} from '@/types/database'
 
 interface SynthesizeRequest {
-  book_id: string;
-  session_id: string;
-  quality?: QualityLevel;
+  book_id: string
+  session_id: string
+  quality?: QualityLevel
 }
 
 interface SynthesizedEntity {
-  name: string;
-  type: string;
-  description: string;
+  name: string
+  type: string
+  description: string
 }
 
 interface SynthesizedBacklogItem {
-  type: BacklogItemType;
-  content: string;
+  type: BacklogItemType
+  content: string
 }
 
 interface SynthesizedWorkspaceFile {
-  room: Room;
-  category: string;
-  title: string;
-  content: string;
+  room: Room
+  category: string
+  title: string
+  content: string
 }
 
 interface SynthesisResult {
-  summary: string;
-  entities: SynthesizedEntity[];
-  backlog_items: SynthesizedBacklogItem[];
-  workspace_files: SynthesizedWorkspaceFile[];
+  summary: string
+  entities: SynthesizedEntity[]
+  backlog_items: SynthesizedBacklogItem[]
+  workspace_files: SynthesizedWorkspaceFile[]
 }
-
-// ---------------------------------------------------------------------------
-// Synthesis prompt
-// ---------------------------------------------------------------------------
 
 const VALID_BACKLOG_TYPES: BacklogItemType[] = [
   'question',
@@ -70,9 +62,10 @@ const VALID_BACKLOG_TYPES: BacklogItemType[] = [
   'unexplored',
   'review',
   'idea',
-];
+]
 
-const VALID_ROOMS: Room[] = ['brainstorm', 'drafts', 'publish'];
+const VALID_ROOMS: Room[] = ['brainstorm', 'drafts', 'publish']
+const VALID_QUALITY_LEVELS: QualityLevel[] = ['economy', 'standard', 'premium']
 
 function buildSynthesisPrompt(bookType: string, bookTitle: string): string {
   return `You are Rune's session analyzer. After a conversation session about the book "${bookTitle}" (${bookType}), you analyze the transcript to extract structured insights.
@@ -109,164 +102,132 @@ Respond with ONLY a JSON object:
   "entities": [...],
   "backlog_items": [...],
   "workspace_files": [...]
-}`;
+}`
 }
 
-// ---------------------------------------------------------------------------
-// Route handler
-// ---------------------------------------------------------------------------
-
 export async function POST(
-  request: Request,
-): Promise<NextResponse<SynthesisResult | { error: string }>> {
+  request: NextRequest
+): Promise<NextResponse> {
   try {
-    // Authenticate
-    const supabase = await createServerClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const context = await requireAuthenticatedRouteContext()
+    if (context instanceof NextResponse) {
+      return context
     }
 
-    // Parse body
-    let body: SynthesizeRequest;
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    const { supabase, user } = context
+    const limit = enforceRateLimit(
+      buildRateLimitKey(request, 'synthesize:create', user.id),
+      RATE_LIMITS.synthesize
+    )
+
+    if (!limit.allowed) {
+      return jsonTooManyRequests({
+        ...limit,
+        error: 'Too many synthesis runs. Please wait a moment before trying again.',
+      })
     }
 
-    const { book_id, session_id } = body;
-
-    if (!book_id || typeof book_id !== 'string') {
-      return NextResponse.json(
-        { error: 'Missing required field: book_id' },
-        { status: 400 },
-      );
-    }
-    if (!session_id || typeof session_id !== 'string') {
-      return NextResponse.json(
-        { error: 'Missing required field: session_id' },
-        { status: 400 },
-      );
+    const parsed = await parseJsonBody<SynthesizeRequest>(request)
+    if (!parsed.ok) {
+      return parsed.response
     }
 
-    const quality: QualityLevel = body.quality ?? 'standard';
+    const { book_id, session_id, quality = 'standard' } = parsed.data
 
-    // Verify book ownership
-    const { data: book, error: bookError } = await supabase
-      .from('books')
-      .select('*')
-      .eq('id', book_id)
-      .eq('user_id', user.id)
-      .single();
-
-    if (bookError || !book) {
-      return NextResponse.json({ error: 'Book not found' }, { status: 404 });
+    if (!book_id || !isValidUUID(book_id)) {
+      return jsonBadRequest('book_id is required')
+    }
+    if (!session_id || !isValidUUID(session_id)) {
+      return jsonBadRequest('session_id is required')
+    }
+    if (!VALID_QUALITY_LEVELS.includes(quality)) {
+      return jsonBadRequest(
+        `quality must be one of: ${VALID_QUALITY_LEVELS.join(', ')}`
+      )
     }
 
-    const typedBook = book as Book;
+    const ownedBook = await requireOwnedBook(supabase, user.id, book_id, '*')
+    if (ownedBook instanceof NextResponse) {
+      return ownedBook
+    }
 
-    // Fetch the session and its raw transcript
+    const typedBook = ownedBook as unknown as Book
     const { data: session, error: sessionError } = await supabase
       .from('sessions')
       .select('*')
       .eq('id', session_id)
       .eq('book_id', book_id)
-      .single();
+      .single()
 
     if (sessionError || !session) {
-      return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Session not found' }, { status: 404 })
     }
 
-    const typedSession = session as Session;
-
+    const typedSession = session as Session
     if (!typedSession.raw_transcript || typedSession.raw_transcript.trim() === '') {
-      return NextResponse.json(
-        { error: 'Session has no transcript to synthesize' },
-        { status: 400 },
-      );
+      return jsonBadRequest('Session has no transcript to synthesize')
     }
 
-    // Call Claude for synthesis
-    const { client, model } = createModelClient('prose', quality);
-    const synthesisPrompt = buildSynthesisPrompt(
-      typedBook.book_type,
-      typedBook.title,
-    );
-
+    const { client, model } = createModelClient('prose', quality)
     const response = await client.messages.create({
       model,
       max_tokens: 4096,
       temperature: 0,
-      system: synthesisPrompt,
+      system: buildSynthesisPrompt(typedBook.book_type, typedBook.title),
       messages: [
         {
           role: 'user',
           content: `Here is the session transcript to analyze:\n\n${typedSession.raw_transcript}`,
         },
       ],
-    });
+    })
 
-    const textBlock = response.content.find((block) => block.type === 'text');
+    const textBlock = response.content.find((block) => block.type === 'text')
     if (!textBlock || textBlock.type !== 'text') {
-      return NextResponse.json(
-        { error: 'No response from synthesis model' },
-        { status: 500 },
-      );
+      throw new Error('No response from synthesis model')
     }
 
-    // Parse synthesis result
-    let synthesis: SynthesisResult;
+    let synthesis: SynthesisResult
     try {
-      synthesis = JSON.parse(textBlock.text.trim());
+      synthesis = JSON.parse(textBlock.text.trim())
     } catch {
-      const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
+      const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/)
       if (!jsonMatch) {
-        return NextResponse.json(
-          { error: 'Synthesis model returned invalid JSON' },
-          { status: 500 },
-        );
+        throw new Error('Synthesis model returned invalid JSON')
       }
-      synthesis = JSON.parse(jsonMatch[0]);
+      synthesis = JSON.parse(jsonMatch[0]) as SynthesisResult
     }
 
-    // Persist: Update session with summary
     if (synthesis.summary) {
       const { error: updateError } = await supabase
         .from('sessions')
         .update({ summary: synthesis.summary })
-        .eq('id', session_id);
+        .eq('id', session_id)
 
       if (updateError) {
-        console.error('[synthesize] Failed to update session summary:', updateError);
+        console.error('[synthesize] Failed to update session summary:', updateError)
       }
     }
 
-    // Persist: Create backlog items
-    const createdBacklogItems: SynthesizedBacklogItem[] = [];
+    const createdBacklogItems: SynthesizedBacklogItem[] = []
     for (const item of synthesis.backlog_items ?? []) {
       if (
         !VALID_BACKLOG_TYPES.includes(item.type) ||
         !item.content ||
         typeof item.content !== 'string'
       ) {
-        continue;
+        continue
       }
 
       try {
-        await addBacklogItem(book_id, item.type, item.content, session_id);
-        createdBacklogItems.push(item);
-      } catch (blError) {
-        console.error('[synthesize] Failed to create backlog item:', blError);
+        await addBacklogItem(book_id, item.type, item.content, session_id)
+        createdBacklogItems.push(item)
+      } catch (backlogError) {
+        console.error('[synthesize] Failed to create backlog item:', backlogError)
       }
     }
 
-    // Persist: Create workspace files
-    const createdWorkspaceFiles: SynthesizedWorkspaceFile[] = [];
+    const createdWorkspaceFiles: SynthesizedWorkspaceFile[] = []
     for (const file of synthesis.workspace_files ?? []) {
       if (
         !VALID_ROOMS.includes(file.room) ||
@@ -274,7 +235,7 @@ export async function POST(
         !file.title ||
         !file.content
       ) {
-        continue;
+        continue
       }
 
       try {
@@ -284,29 +245,21 @@ export async function POST(
           file.category,
           file.title,
           file.content,
-        );
-        createdWorkspaceFiles.push(file);
-      } catch (wsError) {
-        console.error('[synthesize] Failed to create workspace file:', wsError);
+          session_id
+        )
+        createdWorkspaceFiles.push(file)
+      } catch (workspaceError) {
+        console.error('[synthesize] Failed to create workspace file:', workspaceError)
       }
     }
 
-    // Return the full synthesis result (with only successfully persisted items)
-    const result: SynthesisResult = {
+    return NextResponse.json({
       summary: synthesis.summary ?? '',
       entities: synthesis.entities ?? [],
       backlog_items: createdBacklogItems,
       workspace_files: createdWorkspaceFiles,
-    };
-
-    return NextResponse.json(result);
+    })
   } catch (error) {
-    console.error('[synthesize] Session synthesis failed:', error);
-    const errorMessage =
-      error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json(
-      { error: `Synthesis failed: ${errorMessage}` },
-      { status: 500 },
-    );
+    return jsonInternalError('synthesize', error)
   }
 }

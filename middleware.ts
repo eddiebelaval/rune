@@ -25,15 +25,17 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // Refresh session — MUST call getUser() not getSession()
-  // getUser() contacts Supabase Auth server, getSession() only reads JWT
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  // Redirect unauthenticated users away from protected routes
-  const isProtected = request.nextUrl.pathname.startsWith('/book') || request.nextUrl.pathname.startsWith('/settings');
+  const isProtected =
+    request.nextUrl.pathname.startsWith('/book') ||
+    request.nextUrl.pathname.startsWith('/settings');
+
   if (!user && isProtected) {
     const url = request.nextUrl.clone();
-    url.pathname = '/';
+    url.pathname = '/auth';
     return NextResponse.redirect(url);
   }
 
@@ -41,8 +43,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    // Match all routes except static files and API internals
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-  ],
+  matcher: ['/book/:path*', '/settings', '/settings/:path*'],
 };

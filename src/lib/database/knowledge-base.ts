@@ -153,6 +153,10 @@ export class KnowledgeBaseService {
     if (updates.tags !== undefined) updateData.tags = updates.tags
     if (updates.is_active !== undefined) updateData.is_active = updates.is_active
     if (updates.scope !== undefined) updateData.scope = updates.scope
+    if (updates.file_type !== undefined) updateData.file_type = updates.file_type
+    if (updates.folder_type !== undefined) updateData.folder_type = updates.folder_type
+    if (updates.folder_path !== undefined) updateData.folder_path = updates.folder_path
+    if (updates.source_type !== undefined) updateData.source_type = updates.source_type
 
     const { data, error } = await getDb()
       .from('knowledge_files')
@@ -244,5 +248,21 @@ export class KnowledgeBaseService {
 
     if (error) throw new Error(`Failed to get version history: ${error.message}`)
     return (data ?? []) as KBFileVersion[]
+  }
+
+  /**
+   * Restore a previous version by creating a new version from its snapshot
+   */
+  static async restoreVersion(
+    fileId: string,
+    version: number
+  ): Promise<boolean> {
+    const { data, error } = await getDb().rpc('restore_kb_version', {
+      p_knowledge_file_id: fileId,
+      p_version: version,
+    })
+
+    if (error) throw new Error(`Failed to restore KB version: ${error.message}`)
+    return Boolean(data)
   }
 }

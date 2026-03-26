@@ -1,113 +1,125 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase';
+import { NextRequest, NextResponse } from 'next/server'
+import {
+  jsonBadRequest,
+  jsonInternalError,
+  jsonTooManyRequests,
+  parseJsonBody,
+  requireAuthenticatedRouteContext,
+  requireOwnedBook,
+} from '@/lib/api/route'
+import {
+  buildRateLimitKey,
+  enforceRateLimit,
+  RATE_LIMITS,
+} from '@/lib/rate-limit'
+import { isValidUUID } from '@/lib/validation'
 
-/**
- * GET /api/sessions?bookId=<uuid> — List sessions for a book.
- */
 export async function GET(request: NextRequest) {
-  const supabase = await createServerClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  try {
+    const context = await requireAuthenticatedRouteContext()
+    if (context instanceof NextResponse) {
+      return context
+    }
 
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { supabase, user } = context
+    const bookId = request.nextUrl.searchParams.get('bookId')
+
+    if (!bookId || !isValidUUID(bookId)) {
+      return jsonBadRequest('bookId query parameter is required')
+    }
+
+    const ownedBook = await requireOwnedBook(supabase, user.id, bookId)
+    if (ownedBook instanceof NextResponse) {
+      return ownedBook
+    }
+
+    const { data, error } = await supabase
+      .from('sessions')
+      .select('*')
+      .eq('book_id', bookId)
+      .order('session_number', { ascending: true })
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    return NextResponse.json(data ?? [])
+  } catch (error) {
+    return jsonInternalError('sessions:get', error)
   }
-
-  const bookId = request.nextUrl.searchParams.get('bookId');
-  if (!bookId) {
-    return NextResponse.json({ error: 'bookId query parameter is required' }, { status: 400 });
-  }
-
-  // Verify the user owns this book
-  const { data: book, error: bookError } = await supabase
-    .from('books')
-    .select('id')
-    .eq('id', bookId)
-    .eq('user_id', user.id)
-    .single();
-
-  if (bookError || !book) {
-    return NextResponse.json({ error: 'Book not found' }, { status: 404 });
-  }
-
-  const { data, error } = await supabase
-    .from('sessions')
-    .select('*')
-    .eq('book_id', bookId)
-    .order('session_number', { ascending: true });
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json(data);
 }
 
-/**
- * POST /api/sessions — Create a new session for a book.
- * Auto-increments session_number.
- *
- * Body: { bookId: string }
- */
 export async function POST(request: NextRequest) {
-  const supabase = await createServerClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  let body: { bookId?: string };
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    const context = await requireAuthenticatedRouteContext()
+    if (context instanceof NextResponse) {
+      return context
+    }
+
+    const { supabase, user } = context
+    const limit = enforceRateLimit(
+      buildRateLimitKey(request, 'sessions:create', user.id),
+      RATE_LIMITS.sessionsCreate
+    )
+
+    if (!limit.allowed) {
+      return jsonTooManyRequests({
+        ...limit,
+        error: 'Too many session starts. Please wait a moment before trying again.',
+      })
+    }
+
+    const parsed = await parseJsonBody<{ bookId?: string }>(request)
+    if (!parsed.ok) {
+      return parsed.response
+    }
+
+    const { bookId } = parsed.data
+    if (!bookId || !isValidUUID(bookId)) {
+      return jsonBadRequest('bookId is required')
+    }
+
+    const ownedBook = await requireOwnedBook(supabase, user.id, bookId)
+    if (ownedBook instanceof NextResponse) {
+      return ownedBook
+    }
+
+    const { data: lastSession, error: lastSessionError } = await supabase
+      .from('sessions')
+      .select('session_number')
+      .eq('book_id', bookId)
+      .order('session_number', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (lastSessionError) {
+      throw new Error(lastSessionError.message)
+    }
+
+    const nextNumber =
+      lastSession && typeof lastSession.session_number === 'number'
+        ? lastSession.session_number + 1
+        : 1
+
+    const { data: session, error: insertError } = await supabase
+      .from('sessions')
+      .insert({
+        book_id: bookId,
+        session_number: nextNumber,
+        mode: null,
+        raw_transcript: null,
+        summary: null,
+        duration_seconds: null,
+      })
+      .select()
+      .single()
+
+    if (insertError) {
+      throw new Error(insertError.message)
+    }
+
+    return NextResponse.json(session, { status: 201 })
+  } catch (error) {
+    return jsonInternalError('sessions:create', error)
   }
-
-  const { bookId } = body;
-
-  if (!bookId || typeof bookId !== 'string') {
-    return NextResponse.json({ error: 'bookId is required' }, { status: 400 });
-  }
-
-  // Verify the user owns this book
-  const { data: book, error: bookError } = await supabase
-    .from('books')
-    .select('id')
-    .eq('id', bookId)
-    .eq('user_id', user.id)
-    .single();
-
-  if (bookError || !book) {
-    return NextResponse.json({ error: 'Book not found' }, { status: 404 });
-  }
-
-  // Determine the next session number
-  const { data: lastSession } = await supabase
-    .from('sessions')
-    .select('session_number')
-    .eq('book_id', bookId)
-    .order('session_number', { ascending: false })
-    .limit(1)
-    .single();
-
-  const nextNumber = lastSession ? (lastSession.session_number as number) + 1 : 1;
-
-  const { data: session, error: insertError } = await supabase
-    .from('sessions')
-    .insert({
-      book_id: bookId,
-      session_number: nextNumber,
-      mode: null,
-      raw_transcript: null,
-      summary: null,
-      duration_seconds: null,
-    })
-    .select()
-    .single();
-
-  if (insertError) {
-    return NextResponse.json({ error: insertError.message }, { status: 500 });
-  }
-
-  return NextResponse.json(session, { status: 201 });
 }

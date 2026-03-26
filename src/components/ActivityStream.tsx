@@ -2,13 +2,16 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { WorkspaceRooms } from '@/hooks/useWorkspace';
-import type { BacklogItem, Room, WorkspaceFile } from '@/types/database';
-import type { KnowledgeFile } from '@/types/knowledge';
+import type { BacklogItem, BookType, Room, WorkspaceFile } from '@/types/database';
+import type { KBFileVersion, KnowledgeFile } from '@/types/knowledge';
 import KnowledgeGraph from '@/components/KnowledgeGraph';
 import ManuscriptViewer from '@/components/ManuscriptViewer';
 import BookProgress from '@/components/BookProgress';
 import WorldBuildingDashboard from '@/components/WorldBuildingDashboard';
+import KBOperationCard from '@/components/KBOperationCard';
 import { createClient } from '@/lib/supabase-browser';
+import type { SessionKBOperation } from '@/hooks/useSession';
+import { InterviewEngine } from '@/lib/interviews/engine';
 
 // ---------------------------------------------------------------------------
 // ActivityStream — Right sidebar with Workspace + Progress + Graph + Manuscript
@@ -16,9 +19,12 @@ import { createClient } from '@/lib/supabase-browser';
 
 interface ActivityStreamProps {
   bookId: string;
+  bookType: BookType;
   rooms: WorkspaceRooms;
   backlogItems: BacklogItem[];
   nextItem: BacklogItem | null;
+  kbOperations: SessionKBOperation[];
+  onQuickPrompt: (message: string) => Promise<void>;
 }
 
 type Tab = 'world' | 'workspace' | 'progress' | 'graph' | 'manuscript';
@@ -392,9 +398,27 @@ const TAB_LABELS: Record<Tab, string> = {
   manuscript: 'Read',
 };
 
-export default function ActivityStream({ bookId, rooms, backlogItems, nextItem }: ActivityStreamProps) {
+export default function ActivityStream({
+  bookId,
+  bookType,
+  rooms,
+  backlogItems,
+  nextItem,
+  kbOperations,
+  onQuickPrompt,
+}: ActivityStreamProps) {
   const [activeTab, setActiveTab] = useState<Tab>('world');
   const [kbFiles, setKbFiles] = useState<KnowledgeFile[]>([]);
+  const [hiddenOperationIds, setHiddenOperationIds] = useState<string[]>([]);
+  const [selectedVersionFileId, setSelectedVersionFileId] = useState<string | null>(null);
+  const [versionHistory, setVersionHistory] = useState<KBFileVersion[]>([]);
+  const [isVersionHistoryLoading, setIsVersionHistoryLoading] = useState(false);
+  const [versionHistoryNonce, setVersionHistoryNonce] = useState(0);
+  const interviewEngine = new InterviewEngine(bookType, kbFiles);
+  const interviewProgress = interviewEngine.getQuestionProgress();
+  const answeredCount = interviewProgress.filter((item) => item.answered).length;
+  const nextQuestion = interviewEngine.getNextQuestion();
+  const revisitSuggestions = interviewEngine.getRevisitSuggestions();
 
   // Fetch KB files for WorldBuildingDashboard
   useEffect(() => {
@@ -429,6 +453,44 @@ export default function ActivityStream({ bookId, rooms, backlogItems, nextItem }
     return () => { supabase.removeChannel(channel); };
   }, [bookId]);
 
+  useEffect(() => {
+    if (!selectedVersionFileId) {
+      setVersionHistory([]);
+      return;
+    }
+
+    let cancelled = false;
+    setIsVersionHistoryLoading(true);
+
+    fetch(`/api/kb-history?fileId=${selectedVersionFileId}`)
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error('Failed to load KB version history');
+        }
+        return response.json();
+      })
+      .then((payload) => {
+        if (!cancelled) {
+          setVersionHistory((payload.versions ?? []) as KBFileVersion[]);
+        }
+      })
+      .catch((error) => {
+        console.error('[ActivityStream] Failed to load KB version history:', error);
+        if (!cancelled) {
+          setVersionHistory([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsVersionHistoryLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedVersionFileId, versionHistoryNonce]);
+
   return (
     <div className="flex flex-col h-full">
       {/* Tab bar */}
@@ -457,6 +519,89 @@ export default function ActivityStream({ bookId, rooms, backlogItems, nextItem }
       <div className="flex-1 overflow-y-auto py-3">
         {activeTab === 'world' && (
           <div className="px-3">
+            {kbOperations
+              .filter((operation) => !hiddenOperationIds.includes(operation.id))
+              .map((operation) => (
+                <div key={operation.id} className="mb-3">
+                  <KBOperationCard
+                    operationType={operation.operationType}
+                    fileType={operation.fileType}
+                    title={operation.title}
+                    contentPreview={operation.contentPreview}
+                    onApprove={() =>
+                      setHiddenOperationIds((prev) =>
+                        prev.includes(operation.id) ? prev : [...prev, operation.id],
+                      )
+                    }
+                    onDismiss={() =>
+                      setHiddenOperationIds((prev) =>
+                        prev.includes(operation.id) ? prev : [...prev, operation.id],
+                      )
+                    }
+                  />
+                </div>
+              ))}
+            <div
+              className="mb-3 rounded-lg border p-4"
+              style={{
+                background: 'var(--rune-surface)',
+                borderColor: 'var(--rune-border)',
+              }}
+            >
+              <div
+                className="mb-2 text-xs font-mono uppercase tracking-wider"
+                style={{ color: 'var(--rune-teal)' }}
+              >
+                Interview Progress
+              </div>
+              <div
+                className="mb-1 text-sm font-semibold"
+                style={{ color: 'var(--rune-heading)', fontFamily: 'var(--font-serif)' }}
+              >
+                {answeredCount} of {interviewProgress.length} guided topics covered
+              </div>
+              <div className="mb-3 text-xs" style={{ color: 'var(--rune-muted)' }}>
+                {nextQuestion
+                  ? `Next likely thread: ${nextQuestion.targetTitle}`
+                  : 'Core interview topics are covered. This is a good moment to deepen weak spots.'}
+              </div>
+
+              {nextQuestion && (
+                <button
+                  type="button"
+                  onClick={() => void onQuickPrompt(nextQuestion.question)}
+                  className="mb-3 w-full rounded-lg px-3 py-2 text-left text-xs"
+                  style={{
+                    background: 'color-mix(in srgb, var(--rune-teal) 10%, transparent)',
+                    color: 'var(--rune-heading)',
+                    border: '1px solid var(--rune-border)',
+                  }}
+                >
+                  Ask Next Question
+                  <div style={{ color: 'var(--rune-muted)' }}>{nextQuestion.question}</div>
+                </button>
+              )}
+
+              {revisitSuggestions.length > 0 && (
+                <div className="space-y-2">
+                  {revisitSuggestions.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      onClick={() => void onQuickPrompt(suggestion)}
+                      className="w-full rounded-lg px-3 py-2 text-left text-xs"
+                      style={{
+                        background: 'var(--rune-bg)',
+                        color: 'var(--rune-text)',
+                        border: '1px solid var(--rune-border)',
+                      }}
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <WorldBuildingDashboard
               kbFiles={kbFiles}
               gateScore={(() => {
@@ -478,6 +623,125 @@ export default function ActivityStream({ bookId, rooms, backlogItems, nextItem }
                 ...(!kbFiles.some(f => f.file_type === 'timeline') ? ['A timeline helps maintain consistency'] : []),
               ]}
             />
+
+            <div
+              className="mt-3 rounded-lg border p-4"
+              style={{
+                background: 'var(--rune-surface)',
+                borderColor: 'var(--rune-border)',
+              }}
+            >
+              <div
+                className="mb-2 text-xs font-mono uppercase tracking-wider"
+                style={{ color: 'var(--rune-gold)' }}
+              >
+                KB Versions
+              </div>
+              <div className="mb-3 space-y-2">
+                {kbFiles.slice(0, 5).map((file) => (
+                  <button
+                    key={file.id}
+                    type="button"
+                    onClick={() => setSelectedVersionFileId(file.id)}
+                    className="w-full rounded-lg border px-3 py-2 text-left text-xs"
+                    style={{
+                      background:
+                        selectedVersionFileId === file.id ? 'var(--rune-elevated)' : 'var(--rune-bg)',
+                      borderColor: 'var(--rune-border)',
+                      color: 'var(--rune-text)',
+                    }}
+                  >
+                    <div
+                      className="font-semibold"
+                      style={{ color: 'var(--rune-heading)', fontFamily: 'var(--font-serif)' }}
+                    >
+                      {file.title}
+                    </div>
+                    <div style={{ color: 'var(--rune-muted)' }}>
+                      v{file.current_semantic_version}
+                      {typeof file.metadata?.extraction_confidence === 'number'
+                        ? ` • confidence ${Math.round(file.metadata.extraction_confidence * 100)}%`
+                        : ''}
+                      {(typeof file.metadata?.source_session === 'string' || typeof file.metadata?.last_interview_session === 'string')
+                        ? ` • session ${String(file.metadata?.source_session ?? file.metadata?.last_interview_session)}`
+                        : ''}
+                      {file.source_type
+                        ? ` • ${String(file.source_type)}`
+                        : ''}
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {selectedVersionFileId && (
+                <div className="space-y-2">
+                  {isVersionHistoryLoading && (
+                    <div className="text-xs" style={{ color: 'var(--rune-muted)' }}>
+                      Loading version history...
+                    </div>
+                  )}
+                  {!isVersionHistoryLoading && versionHistory.length === 0 && (
+                    <div className="text-xs" style={{ color: 'var(--rune-muted)' }}>
+                      No version snapshots found for this file yet.
+                    </div>
+                  )}
+                  {versionHistory.map((version) => (
+                    <div
+                      key={version.id}
+                      className="rounded-lg border px-3 py-2"
+                      style={{
+                        background: 'var(--rune-bg)',
+                        borderColor: 'var(--rune-border)',
+                      }}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div
+                            className="text-xs font-semibold"
+                            style={{ color: 'var(--rune-heading)' }}
+                          >
+                            v{version.semantic_version}
+                          </div>
+                          <div className="text-[11px]" style={{ color: 'var(--rune-muted)' }}>
+                            {version.version_metadata?.change_summary
+                              ? String(version.version_metadata.change_summary)
+                              : 'Snapshot available'}
+                            {typeof version.version_metadata?.confidence === 'number'
+                              ? ` • ${Math.round(version.version_metadata.confidence * 100)}% confidence`
+                              : ''}
+                            {typeof version.version_metadata?.restored_from_version === 'number'
+                              ? ` • restored from v${version.version_metadata.restored_from_version}`
+                              : ''}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await fetch('/api/kb-history', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                fileId: selectedVersionFileId,
+                                version: version.version,
+                              }),
+                            });
+                            setVersionHistoryNonce((prev) => prev + 1);
+                          }}
+                          className="rounded px-2 py-1 text-[11px]"
+                          style={{
+                            background: 'color-mix(in srgb, var(--rune-gold) 14%, transparent)',
+                            color: 'var(--rune-gold)',
+                            border: 'none',
+                          }}
+                        >
+                          Restore
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
         {activeTab === 'workspace' && <WorkspaceTab rooms={rooms} bookId={bookId} />}
