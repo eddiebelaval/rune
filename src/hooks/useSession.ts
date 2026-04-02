@@ -24,9 +24,20 @@ export interface SessionKBOperation {
   status: 'done' | 'failed';
 }
 
+export interface SynthesisResult {
+  id: string;
+  summary: string;
+  entities: Array<{ name: string; type: string; description: string }>;
+  backlogItems: Array<{ type: string; content: string }>;
+  workspaceFiles: Array<{ room: string; category: string; title: string }>;
+  timestamp: string;
+}
+
 interface UseSessionReturn {
   messages: ConversationMessage[];
   kbOperations: SessionKBOperation[];
+  synthesisResults: SynthesisResult[];
+  dismissSynthesis: (id: string) => void;
   sendMessage: (text: string) => Promise<void>;
   isLoading: boolean;
   error: string | null;
@@ -39,31 +50,7 @@ function createMessageId(): string {
   return `msg-${Date.now()}-${messageCounter}`;
 }
 
-function triggerPostSessionProcessing(
-  bookId: string,
-  sessionId: string,
-  assistantResponse: string,
-): void {
-  fetch('/api/synthesize', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ book_id: bookId, session_id: sessionId }),
-  }).catch((err) => {
-    console.error('[useSession] Background synthesize failed:', err);
-  });
-
-  fetch('/api/extract', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      text: assistantResponse,
-      book_id: bookId,
-      session_id: sessionId,
-    }),
-  }).catch((err) => {
-    console.error('[useSession] Background extract failed:', err);
-  });
-}
+let synthesisCounter = 0;
 
 function parseStreamEvents(buffer: string): {
   events: RuneStreamEvent[];
@@ -93,9 +80,14 @@ function parseStreamEvents(buffer: string): {
 export function useSession(bookId: string, sessionId: string): UseSessionReturn {
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [kbOperations, setKbOperations] = useState<SessionKBOperation[]>([]);
+  const [synthesisResults, setSynthesisResults] = useState<SynthesisResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const exchangeCountRef = useRef(0);
+
+  const dismissSynthesis = useCallback((id: string) => {
+    setSynthesisResults((prev) => prev.filter((r) => r.id !== id));
+  }, []);
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -192,7 +184,45 @@ export function useSession(bookId: string, sessionId: string): UseSessionReturn 
 
         exchangeCountRef.current += 1;
         if (exchangeCountRef.current % 3 === 0 && accumulated.length > 0) {
-          triggerPostSessionProcessing(bookId, sessionId, accumulated);
+          // Synthesize — capture results for summary card
+          fetch('/api/synthesize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ book_id: bookId, session_id: sessionId }),
+          })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+              if (data?.summary) {
+                synthesisCounter += 1;
+                setSynthesisResults((prev) => [
+                  {
+                    id: `synthesis-${Date.now()}-${synthesisCounter}`,
+                    summary: data.summary as string,
+                    entities: (data.entities ?? []) as SynthesisResult['entities'],
+                    backlogItems: (data.backlog_items ?? []) as SynthesisResult['backlogItems'],
+                    workspaceFiles: (data.workspace_files ?? []) as SynthesisResult['workspaceFiles'],
+                    timestamp: new Date().toISOString(),
+                  },
+                  ...prev,
+                ]);
+              }
+            })
+            .catch((err) => {
+              console.error('[useSession] Background synthesize failed:', err);
+            });
+
+          // Extract — still fire-and-forget
+          fetch('/api/extract', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: accumulated,
+              book_id: bookId,
+              session_id: sessionId,
+            }),
+          }).catch((err) => {
+            console.error('[useSession] Background extract failed:', err);
+          });
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to send message';
@@ -208,6 +238,8 @@ export function useSession(bookId: string, sessionId: string): UseSessionReturn 
   return {
     messages,
     kbOperations,
+    synthesisResults,
+    dismissSynthesis,
     sendMessage,
     isLoading,
     error,
