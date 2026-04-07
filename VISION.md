@@ -1,8 +1,8 @@
 # VISION.md -- Living North Star
 ## Rune
 
-> Last evolved: 2026-03-20 | Confidence: HIGH
-> Distance from SPEC: 30% (5 of 12 pillars realized, 5 partial, 2 unrealized)
+> Last evolved: 2026-03-27 | Confidence: HIGH
+> Distance from SPEC: 25% (6 of 12 pillars realized, 4 partial, 2 unrealized)
 
 ---
 
@@ -85,13 +85,13 @@ Rune walks the user through three stages. You can't skip ahead -- each stage fee
 5. **Three-Tier Intelligence** -- REALIZED
    Opus for the heavy thinking (prose generation, manuscript, deep analysis). Sonnet for the working layer (editing, filing, interviews). Haiku for the clerk work (intent detection, entity extraction, KB classification). User controls cost via a single quality slider. Rune routes every task automatically.
 
-6. **Guided Oral Interviews** -- PARTIAL (70%)
+6. **Guided Oral Interviews** -- REALIZED
    Rune doesn't just listen passively -- it interviews. Structured question sequences that walk the user through world-building layer by layer. "Tell me about your main character." "What does the world look like?" "What are the rules?" "Who are the factions?" Each answer populates the KB automatically. The interview adapts based on book type -- memoir interviews ask about eras, people, emotions. Fiction interviews ask about world rules, character motivations, conflict structure. Non-fiction interviews ask about thesis, evidence, counter-arguments. Rune knows what's missing and asks for it.
 
-   **What's built:** Question trees for all 3 book types (Fiction: 9 nodes, Memoir: 8 nodes, Nonfiction: 7 nodes) with follow-up questions, extraction hints, and KB layer targeting. `InterviewEngine` class that walks the tree, infers answered questions from existing KB state, detects gaps (entities mentioned but not profiled), tracks completeness percentage, checks Stage B readiness, and generates system prompt additions for interview mode. Voice-to-KB filing via Claude `tool_use` in the converse API. **Remaining:** Interview progress UI (show user which questions are answered/pending), interview session history, ability to revisit/deepen completed interview topics.
+   **What's built:** Question trees for all 3 book types (Fiction: 9 nodes, Memoir: 8 nodes, Nonfiction: 7 nodes) with follow-up questions, extraction hints, and KB layer targeting. `InterviewEngine` class that walks the tree, infers answered questions from existing KB state, detects gaps (entities mentioned but not profiled), tracks completeness percentage, checks Stage B readiness, and generates system prompt additions for interview mode. Voice-to-KB filing via Claude `tool_use` in the converse API. `InterviewProgress` component: vertical stepper checklist with answered/pending status, "Ask Next" card, collapsible revisit suggestions for deepening completed topics. Memoized engine computation. **Remaining:** Interview session history (browse past interview sessions).
 
-7. **Streaming Transparency** -- PARTIAL (85%)
-   Everything Rune does is visible. Filing a KB entry, connecting entities, drafting a paragraph, updating the world bible -- streamed to the activity panel in real time. Trust through visibility. You watch your scribe work. `KBOperationCard` shows Rune's KB operations with approve/dismiss buttons and auto-approve countdown. `WorldBuildingDashboard` mounted in ActivityStream as default "World" tab. Pipeline stage indicator (Workshop/Study/Press) in BookWorkspace header. **Remaining:** Progress indicators for long synthesis, session-end summary cards, KBOperationCard streaming wiring.
+7. **Streaming Transparency** -- PARTIAL (95%)
+   Everything Rune does is visible. Filing a KB entry, connecting entities, drafting a paragraph, updating the world bible -- streamed to the activity panel in real time. Trust through visibility. You watch your scribe work. `KBOperationCard` shows Rune's KB operations with approve/dismiss buttons and auto-approve countdown (streaming wired end-to-end via SSE). `WorldBuildingDashboard` mounted in ActivityStream as default "World" tab. Pipeline stage indicator (Workshop/Study/Press) in BookWorkspace header. `SynthesisSummaryCard` shows session-end synthesis results (summary, entities extracted, backlog items, workspace files created) with collapsible sections. **Remaining:** Progress indicators for long synthesis operations.
 
 8. **Collaborative Authorship** -- UNREALIZED
    Multiple authors on one book. Shared KB, individual voice profiles, merge/conflict resolution for competing drafts. Kobe and Emily writing their children's book together -- each talking to Rune from their own perspective, Rune weaving both voices into one narrative. The KB is shared but voice profiles are separate -- Rune knows who's talking and adapts. Requires: multi-user auth, voice profile separation, collaborative workspace permissions, conflict resolution for KB entries.
@@ -105,10 +105,10 @@ Rune walks the user through three stages. You can't skip ahead -- each stage fee
 11. **Illustration Intelligence** -- UNREALIZED
     Concept art generation from KB content. Character visualizations from character profiles. Scene compositions from chapter drafts. Art direction briefs generated from the world bible and settings. Not final art -- concept work that feeds a human illustrator or stands alone for self-published work. Requires: image generation API, KB-to-visual pipeline, style consistency engine.
 
-12. **KB Version Tracking** -- PARTIAL (40%)
+12. **KB Version Tracking** -- PARTIAL (65%)
     Every KB file maintains semantic versioning (X.Y.Z). Content snapshots at each version. Can restore any historical state. Tracks which KB version was active when each draft was written -- if you change a character's backstory in session 15, you can see which chapters were written with the old backstory. Provenance and confidence scoring on every entry. Modeled after id8composer's version architecture.
 
-    **What's built:** `knowledge_file_versions` table with content snapshots and semantic versioning. `kb-versioning.ts` with `determineVersionType()` (major/minor/patch by content diff), `bumpSemanticVersion()`, `generateChangeSummary()`. `KnowledgeBaseService.getVersionHistory()` for retrieving version history. DB helper functions `create_kb_version()` and `restore_kb_version()`. **Remaining:** Version history UI (browse/compare/restore), provenance tracking (which KB version was active per draft), confidence scoring per entry, version diff visualization.
+    **What's built:** `knowledge_file_versions` table with content snapshots and semantic versioning. `kb-versioning.ts` with `determineVersionType()` (major/minor/patch by content diff), `bumpSemanticVersion()`, `generateChangeSummary()`. `KnowledgeBaseService.getVersionHistory()` for retrieving version history. DB helper functions `create_kb_version()` and `restore_kb_version()`. `KBVersionHistory` UI component: version list with semantic version badges (major/minor/patch color-coded), change summaries, relative timestamps. Side-by-side content comparison (current vs selected version). Restore with inline confirmation dialog (creates new version from snapshot). Entry point via "history" button on WorldBuildingDashboard layer cards. **Remaining:** Provenance tracking (which KB version was active per draft), confidence scoring per entry.
 
 ## User Truth
 

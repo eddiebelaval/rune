@@ -1,9 +1,9 @@
 # SPEC.md -- Living Specification
 ## Rune
 
-> Last reconciled: 2026-03-20 | Build stage: Stage 9 (Launch Prep) IN PROGRESS | Version: 0.9.0
-> Drift status: CURRENT (post-heal reconciliation)
-> VISION alignment: 70% (5 of 12 pillars realized, 5 partial, 2 unrealized)
+> Last reconciled: 2026-03-27 | Build stage: Stage 9 (Launch Prep) IN PROGRESS | Version: 0.9.0
+> Drift status: CURRENT (activity panel features shipped)
+> VISION alignment: 75% (6 of 12 pillars realized, 4 partial, 2 unrealized)
 
 ---
 
@@ -108,7 +108,10 @@ Subscription. API costs (Claude + Deepgram) absorbed as COGS, included in subscr
 - **AppHeader:** Fixed top bar for unauthenticated pages (landing, auth). Rune wordmark + "Sign in" link.
 - **SessionView:** Main session layout with 65/35 split (conversation left, activity right).
 - **MessageArea:** Conversation message display with role-based styling.
-- **ActivityStream:** Real-time panel showing what Rune is doing (filing, connecting, drafting).
+- **ActivityStream:** Orchestration component for the right sidebar. Delegates to InterviewProgress, KBVersionHistory, SynthesisSummaryCard, KBOperationCard, and WorldBuildingDashboard.
+- **InterviewProgress:** Vertical stepper checklist of interview questions (answered/pending), "Ask Next" card, collapsible revisit suggestions. Memoized InterviewEngine.
+- **KBVersionHistory:** Self-contained version history panel. Version list with semantic version badges, side-by-side content comparison, restore with confirmation. Entry via WorldBuildingDashboard layer cards.
+- **SynthesisSummaryCard:** Session synthesis results card (teal accent). Summary text, collapsible entity pills, backlog items, workspace files created. Dismissible.
 - **QualitySlider:** Three-position slider controlling model routing tier.
 - **SessionSidebar:** Collapsible session list on book workspace (left side, nested within AppSidebar shell).
 - **BookWorkspace:** Client component wiring session sidebar + session view.
@@ -194,7 +197,7 @@ The hierarchical KB architecture is built. What's remaining:
 
 | Feature | Status |
 |---------|--------|
-| **Version history UI** | Backend exists (`getVersionHistory()`). No UI to browse, compare, or restore past versions. |
+| **Version history UI** | Built. `KBVersionHistory` component: version list with semantic version badges, side-by-side content comparison, restore with confirmation. Entry via "history" button on WorldBuildingDashboard layer cards. |
 | **Provenance tracking** | No tracking of which KB version was active when each draft was written. |
 | **Confidence scoring** | No per-entry confidence score from AI extraction. |
 | **Draft-sandbox pairing** | `linked_sandbox_id` column exists but sandbox pairing logic is not wired. |
@@ -217,8 +220,8 @@ The hierarchical KB architecture is built. What's remaining:
 | Book-type-specific interviews | Memoir/fiction/nonfiction ask different questions | Per-type question trees with different priorities and extraction hints. Built. |
 | KB gap detection | "You mentioned X but never described them" | `InterviewEngine.detectGaps()` scans for unprofile'd entities. Built. |
 | Interview -> KB filing | Answers auto-populate KB entries | Via Claude `tool_use` calling `create_kb_entry`/`update_kb_entry`. Built. |
-| Interview progress UI | Show user which interview questions are answered/pending | Not built. Engine tracks internally but no user-facing progress view. |
-| Interview revisiting | Ability to deepen or revisit completed interview topics | Not built. Engine is forward-only. |
+| Interview progress UI | Show user which interview questions are answered/pending | Built. `InterviewProgress` component: vertical stepper checklist, "Ask Next" card, progress bar. Memoized engine. |
+| Interview revisiting | Ability to deepen or revisit completed interview topics | Built. Collapsible "Deepen existing topics" section in InterviewProgress with revisit suggestions from answered questions. |
 
 ### Other Gaps
 
@@ -228,8 +231,8 @@ The hierarchical KB architecture is built. What's remaining:
 | Format-Agnostic Output (9) | No export formats beyond basic manuscript. Books-first not yet built. |
 | Audio-Native Output (10) | No TTS, no audiobook generation. |
 | Illustration Intelligence (11) | No image generation, no concept art pipeline. |
-| KB Version Tracking (12) | Backend built (versioning logic, DB functions, version history query). No UI. No provenance. 40% complete. |
-| Streaming Transparency (7) | KBOperationCard built. WorldBuildingDashboard in ActivityStream. Missing: streaming wiring for KBOperationCard, progress indicators for long synthesis, session-end summary cards. 85% complete. |
+| KB Version Tracking (12) | Backend built. UI built (`KBVersionHistory`: browse, compare, restore). Missing: provenance tracking (which KB version was active per draft), confidence scoring. 65% complete. |
+| Streaming Transparency (7) | KBOperationCard streaming wired end-to-end. WorldBuildingDashboard in ActivityStream. Session-end summary cards built (`SynthesisSummaryCard`). Missing: progress indicators for long synthesis. 95% complete. |
 | Deployment | DEPLOYED. Vercel at `rune-two.vercel.app`, Supabase `rune-prod`. |
 | Billing | Subscription model decided. API costs absorbed as COGS. Stripe integration not yet built. First users (Alexis, Kobe, Emily) get free access. |
 | Tests | 124 tests across 7 test files (Vitest). Covers text-utils, folder-system, kb-versioning, interview-engine, pipeline stages/gates, KB context inference, KB tools schema. No E2E tests. |
@@ -239,10 +242,7 @@ The hierarchical KB architecture is built. What's remaining:
 - **Auth evolved post-build:** Original build had Google OAuth. PR #3-5 changed to magic link only. Auth callback still references patterns from the OAuth era.
 - **Design system evolved:** Original Library/Study theme (dark mahogany) replaced by Claude-Inspired (warm cream) in PR #6. Some component comments may reference old theme.
 - **Legacy entity tables preserved:** `knowledge_entities`, `entity_relationships`, and `timeline_events` tables still exist in the schema for rollback safety. Data has been migrated to `knowledge_files` via `20260317220100_migrate_entities_to_kb.sql`. Legacy tables can be dropped once migration is verified in production.
-- **KB version history UI deferred:** Backend versioning (table, functions, service methods) is complete but no user-facing UI exists to browse, compare, or restore past KB versions.
-- **KBOperationCard streaming not wired:** Component built with approve/dismiss UI, but not yet connected to real-time tool_use streaming events.
-- **No error boundaries.** API routes lack structured error handling.
-- **No rate limiting.** API routes are unprotected.
+- **No error boundaries in React.** React error boundaries not implemented. API routes have structured error handling (centralized helpers in `lib/api/route.ts`).
 - **Server/client split risk:** `supabase.ts` is server-only (imports `next/headers`). `supabase-browser.ts` for client. Mixing causes build errors. Easy to get wrong.
 
 ---

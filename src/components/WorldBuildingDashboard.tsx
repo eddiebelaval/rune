@@ -11,6 +11,7 @@ interface WorldBuildingDashboardProps {
   suggestions: string[]
   onLayerClick?: (fileType: KnowledgeFileType) => void
   onAdvanceStage?: () => void
+  onFileHistory?: (fileType: KnowledgeFileType) => void
 }
 
 interface LayerStatus {
@@ -31,6 +32,7 @@ export default function WorldBuildingDashboard({
   suggestions,
   onLayerClick,
   onAdvanceStage,
+  onFileHistory,
 }: WorldBuildingDashboardProps) {
   const layers = useMemo((): LayerStatus[] => {
     const foundationTypes: { title: string; fileType: KnowledgeFileType; titleMatch?: string; description: string }[] = [
@@ -176,10 +178,28 @@ export default function WorldBuildingDashboard({
               {layer.title}
             </div>
 
-            <div className="text-xs" style={{ color: 'var(--rune-muted)' }}>
-              {layer.populated
-                ? `${layer.wordCount} words`
-                : layer.description}
+            <div className="flex items-center justify-between">
+              <div className="text-xs" style={{ color: 'var(--rune-muted)' }}>
+                {layer.populated
+                  ? `${layer.wordCount} words`
+                  : layer.description}
+              </div>
+              {layer.populated && onFileHistory && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onFileHistory(layer.fileType)
+                  }}
+                  className="text-[10px] cursor-pointer px-1.5 py-0.5 rounded transition-colors duration-150"
+                  style={{
+                    color: 'var(--rune-muted)',
+                    fontFamily: 'var(--font-mono, "IBM Plex Mono", monospace)',
+                  }}
+                >
+                  history
+                </button>
+              )}
             </div>
           </button>
         ))}

@@ -2,13 +2,18 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { WorkspaceRooms } from '@/hooks/useWorkspace';
-import type { BacklogItem, Room, WorkspaceFile } from '@/types/database';
+import type { BacklogItem, BookType, Room, WorkspaceFile } from '@/types/database';
 import type { KnowledgeFile } from '@/types/knowledge';
 import KnowledgeGraph from '@/components/KnowledgeGraph';
 import ManuscriptViewer from '@/components/ManuscriptViewer';
 import BookProgress from '@/components/BookProgress';
 import WorldBuildingDashboard from '@/components/WorldBuildingDashboard';
+import KBOperationCard from '@/components/KBOperationCard';
+import InterviewProgress from '@/components/InterviewProgress';
+import KBVersionHistory from '@/components/KBVersionHistory';
+import SynthesisSummaryCard from '@/components/SynthesisSummaryCard';
 import { createClient } from '@/lib/supabase-browser';
+import type { SessionKBOperation, SynthesisResult } from '@/hooks/useSession';
 
 // ---------------------------------------------------------------------------
 // ActivityStream — Right sidebar with Workspace + Progress + Graph + Manuscript
@@ -16,9 +21,14 @@ import { createClient } from '@/lib/supabase-browser';
 
 interface ActivityStreamProps {
   bookId: string;
+  bookType: BookType;
   rooms: WorkspaceRooms;
   backlogItems: BacklogItem[];
   nextItem: BacklogItem | null;
+  kbOperations: SessionKBOperation[];
+  synthesisResults: SynthesisResult[];
+  onDismissSynthesis: (id: string) => void;
+  onQuickPrompt: (message: string) => Promise<void>;
 }
 
 type Tab = 'world' | 'workspace' | 'progress' | 'graph' | 'manuscript';
@@ -392,9 +402,21 @@ const TAB_LABELS: Record<Tab, string> = {
   manuscript: 'Read',
 };
 
-export default function ActivityStream({ bookId, rooms, backlogItems, nextItem }: ActivityStreamProps) {
+export default function ActivityStream({
+  bookId,
+  bookType,
+  rooms,
+  backlogItems,
+  nextItem,
+  kbOperations,
+  synthesisResults,
+  onDismissSynthesis,
+  onQuickPrompt,
+}: ActivityStreamProps) {
   const [activeTab, setActiveTab] = useState<Tab>('world');
   const [kbFiles, setKbFiles] = useState<KnowledgeFile[]>([]);
+  const [hiddenOperationIds, setHiddenOperationIds] = useState<string[]>([]);
+  const [selectedVersionFileId, setSelectedVersionFileId] = useState<string | null>(null);
 
   // Fetch KB files for WorldBuildingDashboard
   useEffect(() => {
@@ -457,6 +479,52 @@ export default function ActivityStream({ bookId, rooms, backlogItems, nextItem }
       <div className="flex-1 overflow-y-auto py-3">
         {activeTab === 'world' && (
           <div className="px-3">
+            {/* Synthesis summary cards */}
+            {synthesisResults.map((result) => (
+              <div key={result.id} className="mb-3">
+                <SynthesisSummaryCard
+                  summary={result.summary}
+                  entities={result.entities}
+                  backlogItems={result.backlogItems}
+                  workspaceFiles={result.workspaceFiles}
+                  onDismiss={() => onDismissSynthesis(result.id)}
+                  timestamp={result.timestamp}
+                />
+              </div>
+            ))}
+
+            {/* KB operation cards */}
+            {kbOperations
+              .filter((operation) => !hiddenOperationIds.includes(operation.id))
+              .map((operation) => (
+                <div key={operation.id} className="mb-3">
+                  <KBOperationCard
+                    operationType={operation.operationType}
+                    fileType={operation.fileType}
+                    title={operation.title}
+                    contentPreview={operation.contentPreview}
+                    onApprove={() =>
+                      setHiddenOperationIds((prev) =>
+                        prev.includes(operation.id) ? prev : [...prev, operation.id],
+                      )
+                    }
+                    onDismiss={() =>
+                      setHiddenOperationIds((prev) =>
+                        prev.includes(operation.id) ? prev : [...prev, operation.id],
+                      )
+                    }
+                  />
+                </div>
+              ))}
+
+            {/* Interview progress stepper */}
+            <InterviewProgress
+              bookType={bookType}
+              kbFiles={kbFiles}
+              onQuickPrompt={onQuickPrompt}
+            />
+
+            {/* World building dashboard */}
             <WorldBuildingDashboard
               kbFiles={kbFiles}
               gateScore={(() => {
@@ -477,7 +545,25 @@ export default function ActivityStream({ bookId, rooms, backlogItems, nextItem }
                 ...(!kbFiles.some(f => f.file_type === 'relationships-map') ? ['Map character relationships for better dialogue'] : []),
                 ...(!kbFiles.some(f => f.file_type === 'timeline') ? ['A timeline helps maintain consistency'] : []),
               ]}
+              onFileHistory={(fileType) => {
+                const file = kbFiles.find(f => f.file_type === fileType);
+                if (file) setSelectedVersionFileId(file.id);
+              }}
             />
+
+            {/* KB version history */}
+            {selectedVersionFileId && (() => {
+              const file = kbFiles.find(f => f.id === selectedVersionFileId);
+              if (!file) return null;
+              return (
+                <KBVersionHistory
+                  fileId={selectedVersionFileId}
+                  fileName={file.title}
+                  currentContent={file.content}
+                  onClose={() => setSelectedVersionFileId(null)}
+                />
+              );
+            })()}
           </div>
         )}
         {activeTab === 'workspace' && <WorkspaceTab rooms={rooms} bookId={bookId} />}

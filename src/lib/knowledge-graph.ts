@@ -1,235 +1,274 @@
-import { createServerClient } from '@/lib/supabase';
-import type { EntityType, KnowledgeEntity, EntityRelationship } from '@/types/database';
+import { createServiceClient } from '@/lib/supabase'
+import { KnowledgeBaseService } from '@/lib/database/knowledge-base'
+import { buildKnowledgeInsights } from '@/lib/knowledge-insights'
+import { inferFolderAndScope } from '@/types/folder-system'
+import type { EntityRelationship, EntityType, KnowledgeEntity } from '@/types/database'
+import type { KnowledgeFileType } from '@/types/knowledge'
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type EntityInsert = Omit<KnowledgeEntity, 'id' | 'created_at' | 'updated_at' | 'mention_count'>;
-type EntityUpdate = Partial<Pick<KnowledgeEntity, 'name' | 'description' | 'attributes' | 'entity_type'>>;
+type EntityInsert = Omit<KnowledgeEntity, 'id' | 'created_at' | 'updated_at' | 'mention_count'>
+type EntityUpdate = Partial<
+  Pick<KnowledgeEntity, 'name' | 'description' | 'attributes' | 'entity_type'>
+>
 
 export interface EntityNetwork {
-  entities: KnowledgeEntity[];
-  relationships: EntityRelationship[];
+  entities: KnowledgeEntity[]
+  relationships: EntityRelationship[]
 }
 
-// ---------------------------------------------------------------------------
-// Entity Operations
-// ---------------------------------------------------------------------------
+const ENTITY_TO_FILE_TYPE: Record<EntityType, KnowledgeFileType> = {
+  person: 'characters',
+  place: 'world-building',
+  theme: 'thematic-through-lines',
+  event: 'timeline',
+}
 
-/**
- * Add a new entity to the knowledge graph.
- */
+async function getBookOwnerId(bookId: string): Promise<string> {
+  const { data, error } = await createServiceClient()
+    .from('books')
+    .select('user_id')
+    .eq('id', bookId)
+    .single()
+
+  if (error || !data?.user_id) {
+    throw new Error('Book not found')
+  }
+
+  return data.user_id as string
+}
+
+async function getKnowledgeInsightsForBook(bookId: string) {
+  const userId = await getBookOwnerId(bookId)
+  const files = await KnowledgeBaseService.getFiles(userId, { book_id: bookId })
+  return {
+    userId,
+    insights: buildKnowledgeInsights(files),
+  }
+}
+
 export async function addEntity(
   bookId: string,
   type: EntityType,
   name: string,
   description?: string,
   attributes?: Record<string, unknown>,
-  sessionId?: string,
+  sessionId?: string
 ): Promise<KnowledgeEntity> {
-  const supabase = await createServerClient();
+  const userId = await getBookOwnerId(bookId)
+  const fileType = ENTITY_TO_FILE_TYPE[type]
+  const inferred = inferFolderAndScope(fileType)
 
-  const row: EntityInsert = {
+  const file = await KnowledgeBaseService.createFile(userId, {
     book_id: bookId,
+    title: name,
+    content: description ?? '',
+    file_type: fileType,
+    scope: inferred.scope,
+    folder_type: inferred.folder_type,
+    folder_path: inferred.folder_path,
+    is_active: true,
+    source_type: 'ai-generated',
+    metadata: {
+      ...attributes,
+      source_session: sessionId,
+      mention_count: 1,
+    },
+  })
+
+  return {
+    id: file.id,
+    book_id: file.book_id ?? bookId,
     entity_type: type,
-    name,
-    description: description ?? '',
+    name: file.title,
+    description: file.content,
     attributes: attributes ?? {},
     first_mentioned_session: sessionId ?? null,
-  };
-
-  const { data, error } = await supabase
-    .from('knowledge_entities')
-    .insert(row)
-    .select()
-    .single();
-
-  if (error) throw new Error(`Failed to add entity: ${error.message}`);
-  return data as KnowledgeEntity;
+    mention_count: 1,
+    created_at: file.created_at,
+    updated_at: file.updated_at,
+  }
 }
 
-/**
- * Get all entities for a book, optionally filtered by type.
- */
 export async function getEntities(
   bookId: string,
-  type?: EntityType,
+  type?: EntityType
 ): Promise<KnowledgeEntity[]> {
-  const supabase = await createServerClient();
-
-  let query = supabase
-    .from('knowledge_entities')
-    .select('*')
-    .eq('book_id', bookId)
-    .order('mention_count', { ascending: false });
-
-  if (type) {
-    query = query.eq('entity_type', type);
-  }
-
-  const { data, error } = await query;
-  if (error) throw new Error(`Failed to fetch entities: ${error.message}`);
-  return (data ?? []) as KnowledgeEntity[];
+  const { insights } = await getKnowledgeInsightsForBook(bookId)
+  const entities = insights.entities.filter((entity) => !entity.is_placeholder)
+  return type ? entities.filter((entity) => entity.entity_type === type) : entities
 }
 
-/**
- * Update an entity by id.
- */
 export async function updateEntity(
   id: string,
-  updates: EntityUpdate,
+  updates: EntityUpdate
 ): Promise<KnowledgeEntity> {
-  const supabase = await createServerClient();
+  const existing = await KnowledgeBaseService.getFile(id)
+  if (!existing) {
+    throw new Error('Entity not found')
+  }
 
-  const { data, error } = await supabase
-    .from('knowledge_entities')
-    .update(updates)
-    .eq('id', id)
-    .select()
-    .single();
+  const nextFileType = updates.entity_type
+    ? ENTITY_TO_FILE_TYPE[updates.entity_type]
+    : existing.file_type
+  const inferred = inferFolderAndScope(nextFileType)
 
-  if (error) throw new Error(`Failed to update entity: ${error.message}`);
-  return data as KnowledgeEntity;
+  const updated = await KnowledgeBaseService.updateFile(id, {
+    title: updates.name ?? existing.title,
+    content: updates.description ?? existing.content,
+    file_type: nextFileType,
+    folder_type: inferred.folder_type,
+    folder_path: inferred.folder_path,
+    scope: inferred.scope,
+    metadata: {
+      ...(updates.attributes ?? {}),
+      mention_count:
+        typeof existing.metadata?.mention_count === 'number'
+          ? existing.metadata.mention_count
+          : 1,
+    },
+  })
+
+  return {
+    id: updated.id,
+    book_id: updated.book_id ?? '',
+    entity_type: updates.entity_type ?? ENTITY_TO_FILE_TYPE_REVERSE(updated.file_type),
+    name: updated.title,
+    description: updated.content,
+    attributes: (updates.attributes ?? existing.metadata ?? {}) as Record<string, unknown>,
+    first_mentioned_session:
+      typeof updated.metadata?.source_session === 'string'
+        ? updated.metadata.source_session
+        : null,
+    mention_count:
+      typeof updated.metadata?.mention_count === 'number'
+        ? updated.metadata.mention_count
+        : 1,
+    created_at: updated.created_at,
+    updated_at: updated.updated_at,
+  }
 }
 
-/**
- * Increment the mention_count of an entity by 1.
- */
+function ENTITY_TO_FILE_TYPE_REVERSE(fileType: string): EntityType {
+  switch (fileType) {
+    case 'characters':
+      return 'person'
+    case 'world-building':
+      return 'place'
+    case 'thematic-through-lines':
+      return 'theme'
+    case 'timeline':
+      return 'event'
+    default:
+      return 'person'
+  }
+}
+
 export async function incrementMentionCount(entityId: string): Promise<void> {
-  const supabase = await createServerClient();
+  const existing = await KnowledgeBaseService.getFile(entityId)
+  if (!existing) {
+    throw new Error('Entity not found')
+  }
 
-  // Fetch current count, then increment
-  const { data: current, error: fetchError } = await supabase
-    .from('knowledge_entities')
-    .select('mention_count')
-    .eq('id', entityId)
-    .single();
+  const currentCount =
+    typeof existing.metadata?.mention_count === 'number'
+      ? existing.metadata.mention_count
+      : 1
 
-  if (fetchError) throw new Error(`Failed to fetch entity for increment: ${fetchError.message}`);
-
-  const newCount = ((current as { mention_count: number }).mention_count ?? 0) + 1;
-
-  const { error: updateError } = await supabase
-    .from('knowledge_entities')
-    .update({ mention_count: newCount })
-    .eq('id', entityId);
-
-  if (updateError) throw new Error(`Failed to increment mention count: ${updateError.message}`);
+  await KnowledgeBaseService.updateFile(entityId, {
+    metadata: {
+      mention_count: currentCount + 1,
+    },
+  })
 }
 
-// ---------------------------------------------------------------------------
-// Relationship Operations
-// ---------------------------------------------------------------------------
-
-/**
- * Add a relationship between two entities.
- */
 export async function addRelationship(
   bookId: string,
   fromId: string,
   toId: string,
   type: string,
-  description?: string,
+  description?: string
 ): Promise<EntityRelationship> {
-  const supabase = await createServerClient();
+  const userId = await getBookOwnerId(bookId)
+  const [fromEntity, toEntity] = await Promise.all([
+    KnowledgeBaseService.getFile(fromId),
+    KnowledgeBaseService.getFile(toId),
+  ])
 
-  const row = {
+  if (!fromEntity || !toEntity) {
+    throw new Error('Related entities not found')
+  }
+
+  const relationshipLine = `${fromEntity.title} --[${type}]--> ${toEntity.title}${
+    description ? `: ${description}` : ''
+  }`
+
+  const files = await KnowledgeBaseService.getFiles(userId, {
+    book_id: bookId,
+    file_type: 'relationships-map',
+  })
+  const mapFile = files[0]
+
+  if (mapFile) {
+    await KnowledgeBaseService.updateFile(mapFile.id, {
+      content: `${mapFile.content}\n${relationshipLine}`.trim(),
+    })
+
+    return {
+      id: `${mapFile.id}:${Date.now()}`,
+      book_id: bookId,
+      from_entity_id: fromId,
+      to_entity_id: toId,
+      relationship_type: type,
+      description: description ?? '',
+      created_at: new Date().toISOString(),
+    }
+  }
+
+  const created = await KnowledgeBaseService.createFile(userId, {
+    book_id: bookId,
+    title: 'Relationships Map',
+    content: relationshipLine,
+    file_type: 'relationships-map',
+    is_active: true,
+    source_type: 'ai-generated',
+  })
+
+  return {
+    id: `${created.id}:1`,
     book_id: bookId,
     from_entity_id: fromId,
     to_entity_id: toId,
     relationship_type: type,
     description: description ?? '',
-  };
-
-  const { data, error } = await supabase
-    .from('entity_relationships')
-    .insert(row)
-    .select()
-    .single();
-
-  if (error) throw new Error(`Failed to add relationship: ${error.message}`);
-  return data as EntityRelationship;
+    created_at: created.created_at,
+  }
 }
 
-/**
- * Get relationships for a book, optionally filtered to those involving a
- * specific entity (either as from or to).
- */
 export async function getRelationships(
   bookId: string,
-  entityId?: string,
+  entityId?: string
 ): Promise<EntityRelationship[]> {
-  const supabase = await createServerClient();
-
-  if (entityId) {
-    // Supabase doesn't support OR across columns in a single query builder
-    // call cleanly, so we run two queries and merge.
-    const [fromResult, toResult] = await Promise.all([
-      supabase
-        .from('entity_relationships')
-        .select('*')
-        .eq('book_id', bookId)
-        .eq('from_entity_id', entityId),
-      supabase
-        .from('entity_relationships')
-        .select('*')
-        .eq('book_id', bookId)
-        .eq('to_entity_id', entityId),
-    ]);
-
-    if (fromResult.error) throw new Error(`Failed to fetch relationships: ${fromResult.error.message}`);
-    if (toResult.error) throw new Error(`Failed to fetch relationships: ${toResult.error.message}`);
-
-    // Deduplicate by id
-    const seen = new Set<string>();
-    const merged: EntityRelationship[] = [];
-    for (const rel of [...(fromResult.data ?? []), ...(toResult.data ?? [])]) {
-      const r = rel as EntityRelationship;
-      if (!seen.has(r.id)) {
-        seen.add(r.id);
-        merged.push(r);
-      }
-    }
-    return merged;
+  const { insights } = await getKnowledgeInsightsForBook(bookId)
+  const relationships = insights.relationships
+  if (!entityId) {
+    return relationships
   }
 
-  const { data, error } = await supabase
-    .from('entity_relationships')
-    .select('*')
-    .eq('book_id', bookId);
-
-  if (error) throw new Error(`Failed to fetch relationships: ${error.message}`);
-  return (data ?? []) as EntityRelationship[];
+  return relationships.filter(
+    (relationship) =>
+      relationship.from_entity_id === entityId ||
+      relationship.to_entity_id === entityId
+  )
 }
 
-/**
- * Return the full knowledge graph for a book (entities + relationships).
- */
 export async function getEntityNetwork(bookId: string): Promise<EntityNetwork> {
-  const [entities, relationships] = await Promise.all([
-    getEntities(bookId),
-    getRelationships(bookId),
-  ]);
-
-  return { entities, relationships };
+  const { insights } = await getKnowledgeInsightsForBook(bookId)
+  return {
+    entities: insights.entities,
+    relationships: insights.relationships,
+  }
 }
 
-/**
- * Find entities that are "unresolved" — mentioned but lacking a description
- * or having zero relationships. These are candidates for the backlog.
- */
 export async function findUnresolved(bookId: string): Promise<KnowledgeEntity[]> {
-  const { entities, relationships } = await getEntityNetwork(bookId);
-
-  // Build a set of entity ids that have at least one relationship
-  const connected = new Set<string>();
-  for (const rel of relationships) {
-    connected.add(rel.from_entity_id);
-    connected.add(rel.to_entity_id);
-  }
-
-  return entities.filter(
-    (e) => !e.description || e.description.trim() === '' || !connected.has(e.id),
-  );
+  const { insights } = await getKnowledgeInsightsForBook(bookId)
+  return insights.unresolved
 }

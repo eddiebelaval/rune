@@ -5,36 +5,38 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase';
 import { addressItem, dismissItem } from '@/lib/backlog';
+import {
+  jsonBadRequest,
+  jsonForbidden,
+  jsonInternalError,
+  jsonNotFound,
+  parseJsonBody,
+  requireAuthenticatedRouteContext,
+} from '@/lib/api/route';
 
 export async function PATCH(request: NextRequest) {
-  const supabase = await createServerClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const context = await requireAuthenticatedRouteContext();
+  if (context instanceof NextResponse) {
+    return context;
   }
 
-  let body: { id?: string; action?: string };
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  const { supabase, user } = context;
+  const parsed = await parseJsonBody<{ id?: string; action?: string }>(request);
+  if (!parsed.ok) {
+    return parsed.response;
   }
+
+  const body = parsed.data;
 
   if (!body.id || typeof body.id !== 'string') {
-    return NextResponse.json({ error: 'id is required' }, { status: 400 });
+    return jsonBadRequest('id is required');
   }
 
   if (!body.action || !['address', 'dismiss'].includes(body.action)) {
-    return NextResponse.json(
-      { error: 'action must be "address" or "dismiss"' },
-      { status: 400 },
-    );
+    return jsonBadRequest('action must be "address" or "dismiss"');
   }
 
-  // Verify the backlog item belongs to a book owned by this user
   const { data: item } = await supabase
     .from('backlog_items')
     .select('book_id')
@@ -42,7 +44,7 @@ export async function PATCH(request: NextRequest) {
     .single();
 
   if (!item) {
-    return NextResponse.json({ error: 'Backlog item not found' }, { status: 404 });
+    return jsonNotFound('Backlog item not found');
   }
 
   const { data: book } = await supabase
@@ -53,16 +55,16 @@ export async function PATCH(request: NextRequest) {
     .single();
 
   if (!book) {
-    return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+    return jsonForbidden('Not authorized');
   }
 
   try {
-    const updated = body.action === 'address'
-      ? await addressItem(body.id)
-      : await dismissItem(body.id);
+    const updated =
+      body.action === 'address'
+        ? await addressItem(body.id)
+        : await dismissItem(body.id);
     return NextResponse.json(updated);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch (error) {
+    return jsonInternalError('backlog', error);
   }
 }

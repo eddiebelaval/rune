@@ -100,6 +100,21 @@ export class InterviewEngine {
     return { total, answered, percentage, missingLayers }
   }
 
+  getQuestionProgress(): Array<QuestionNode & { answered: boolean }> {
+    return getQuestionTree(this.bookType).map((node) => ({
+      ...node,
+      answered: this.answeredIds.has(node.id),
+    }))
+  }
+
+  getRevisitSuggestions(limit = 3): string[] {
+    return this.getQuestionProgress()
+      .filter((node) => node.answered)
+      .sort((a, b) => a.priority - b.priority)
+      .slice(0, limit)
+      .map((node) => `Let's go deeper on ${node.targetTitle}. ${node.followUps[0] ?? node.question}`)
+  }
+
   /**
    * Detect gaps: entities mentioned in KB content but without their own profiles
    */

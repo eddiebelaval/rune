@@ -25,9 +25,10 @@ interface SessionViewProps {
 export default function SessionView({
   bookId,
   sessionId,
+  bookType,
   title,
 }: SessionViewProps) {
-  const { messages, sendMessage, isLoading } = useSession(bookId, sessionId);
+  const { messages, kbOperations, synthesisResults, dismissSynthesis, sendMessage, isLoading } = useSession(bookId, sessionId);
   const { rooms } = useWorkspace(bookId);
   const { items: backlogItems, nextItem } = useBacklog(bookId);
 
@@ -72,9 +73,14 @@ export default function SessionView({
       >
         <ActivityStream
           bookId={bookId}
+          bookType={bookType}
           rooms={rooms}
           backlogItems={backlogItems}
           nextItem={nextItem}
+          kbOperations={kbOperations}
+          synthesisResults={synthesisResults}
+          onDismissSynthesis={dismissSynthesis}
+          onQuickPrompt={sendMessage}
         />
       </div>
     </div>

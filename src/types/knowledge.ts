@@ -129,10 +129,14 @@ export interface CreateKBFileInput {
 export interface UpdateKBFileInput {
   title?: string
   content?: string
+  file_type?: KnowledgeFileType
+  folder_type?: FolderType
+  folder_path?: string
   tags?: string[]
   is_active?: boolean
   metadata?: Partial<KnowledgeFileMetadata>
   scope?: KnowledgeScope
+  source_type?: FileSourceType
 }
 
 // Query filters

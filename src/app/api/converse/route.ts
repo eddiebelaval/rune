@@ -12,7 +12,6 @@
 
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
-import { createServerClient } from '@/lib/supabase';
 import { createModelClient } from '@/lib/model-router';
 import { assemblePrompt } from '@/lib/prompts/index';
 import { getBacklogItems } from '@/lib/backlog';
@@ -31,6 +30,20 @@ import type { QualityLevel, SessionMode, Book, Session } from '@/types/database'
 import type { ModelTask } from '@/types/models';
 import type { PipelineStage } from '@/types/knowledge';
 import { isValidUUID, isValidMessage, safeErrorResponse } from '@/lib/validation';
+import type { KnowledgeFileType } from '@/types/knowledge';
+import type { RuneStreamEvent } from '@/types/stream';
+import {
+  jsonBadRequest,
+  jsonNotFound,
+  jsonTooManyRequests,
+  parseJsonBody,
+  requireAuthenticatedRouteContext,
+} from '@/lib/api/route';
+import {
+  buildRateLimitKey,
+  enforceRateLimit,
+  RATE_LIMITS,
+} from '@/lib/rate-limit';
 
 // ---------------------------------------------------------------------------
 // Map conversation intent to model task / session mode
@@ -69,35 +82,40 @@ export async function POST(
   request: Request,
 ): Promise<Response> {
   try {
-    // Authenticate
-    const supabase = await createServerClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    const context = await requireAuthenticatedRouteContext();
+    if (context instanceof NextResponse) {
+      return context;
+    }
+    const { supabase, user } = context;
 
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const rateLimit = enforceRateLimit(
+      buildRateLimitKey(request, 'converse', user.id),
+      RATE_LIMITS.converse
+    );
+
+    if (!rateLimit.allowed) {
+      return jsonTooManyRequests({
+        ...rateLimit,
+        error: 'Too many conversation requests',
+      });
     }
 
-    // Parse body
-    let body: ConverseRequest;
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    const parsed = await parseJsonBody<ConverseRequest>(request);
+    if (!parsed.ok) {
+      return parsed.response;
     }
 
+    const body = parsed.data;
     const { message, book_id, session_id } = body;
 
     if (!isValidMessage(message)) {
-      return NextResponse.json({ error: 'Invalid or missing message' }, { status: 400 });
+      return jsonBadRequest('Invalid or missing message');
     }
     if (!isValidUUID(book_id)) {
-      return NextResponse.json({ error: 'Invalid book_id' }, { status: 400 });
+      return jsonBadRequest('Invalid book_id');
     }
     if (!isValidUUID(session_id)) {
-      return NextResponse.json({ error: 'Invalid session_id' }, { status: 400 });
+      return jsonBadRequest('Invalid session_id');
     }
 
     const quality: QualityLevel = body.quality ?? 'standard';
@@ -111,10 +129,10 @@ export async function POST(
     ]);
 
     if (bookResult.error || !bookResult.data) {
-      return NextResponse.json({ error: 'Book not found' }, { status: 404 });
+      return jsonNotFound('Book not found');
     }
     if (sessionResult.error || !sessionResult.data) {
-      return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+      return jsonNotFound('Session not found');
     }
 
     const { intent } = intentResult;
@@ -221,8 +239,12 @@ book_title: ${typedBook.title}
           );
         } catch (error) {
           console.error('[converse] Stream error:', error);
-          controller.enqueue(encoder.encode('\n\n[An error occurred during the conversation]'));
+          enqueueStreamEvent(controller, encoder, {
+            type: 'error',
+            message: 'An error occurred during the conversation',
+          });
         } finally {
+          enqueueStreamEvent(controller, encoder, { type: 'done' });
           controller.close();
         }
       },
@@ -230,9 +252,8 @@ book_title: ${typedBook.title}
 
     return new Response(responseStream, {
       headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
+        'Content-Type': 'text/event-stream; charset=utf-8',
         'Cache-Control': 'no-cache',
-        'Transfer-Encoding': 'chunked',
         Connection: 'keep-alive',
       },
     });
@@ -261,7 +282,10 @@ async function streamWithToolUse(
 ): Promise<void> {
   // Safety: prevent infinite tool-use loops
   if (depth > 5) {
-    controller.enqueue(encoder.encode('\n\n[Tool call depth limit reached]'));
+    enqueueStreamEvent(controller, encoder, {
+      type: 'error',
+      message: 'Tool call depth limit reached',
+    });
     return;
   }
 
@@ -277,7 +301,10 @@ async function streamWithToolUse(
   const contentBlocks: Anthropic.ContentBlock[] = [];
 
   stream.on('text', (text) => {
-    controller.enqueue(encoder.encode(text));
+    enqueueStreamEvent(controller, encoder, {
+      type: 'text_delta',
+      text,
+    });
   });
 
   // Wait for the full message to check for tool_use
@@ -306,10 +333,12 @@ async function streamWithToolUse(
         content: JSON.stringify(result.success ? result.data : { error: result.error }),
       });
 
-      // Notify client of operation
-      const label = isConcierge ? 'Sam' : 'KB';
-      const notification = `\n[${label}: ${block.name} — ${result.success ? 'done' : 'failed'}]\n`;
-      controller.enqueue(encoder.encode(notification));
+      if (!isConcierge) {
+        const kbEvent = buildKBOperationEvent(block.id, block.name as KBToolName, args, result);
+        if (kbEvent) {
+          enqueueStreamEvent(controller, encoder, kbEvent);
+        }
+      }
     }
 
     // Continue conversation with tool results (recursive for multi-turn tool use)
@@ -324,4 +353,51 @@ async function streamWithToolUse(
       userId, bookId, controller, encoder, depth + 1,
     );
   }
+}
+
+function enqueueStreamEvent(
+  controller: ReadableStreamDefaultController,
+  encoder: TextEncoder,
+  event: RuneStreamEvent
+) {
+  controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+}
+
+function buildKBOperationEvent(
+  id: string,
+  toolName: KBToolName,
+  args: Record<string, unknown>,
+  result: { success: boolean; data?: unknown; error?: string }
+): RuneStreamEvent | null {
+  const resultData = (result.data ?? {}) as Record<string, unknown>;
+
+  if (toolName === 'create_kb_entry') {
+    return {
+      type: 'kb_operation',
+      id,
+      operationType: 'create',
+      fileType: (resultData.file_type ?? args.file_type) as KnowledgeFileType,
+      title: String(resultData.title ?? args.title ?? 'Untitled entry'),
+      contentPreview: String(
+        resultData.content_preview ?? args.content ?? result.error ?? ''
+      ).slice(0, 180),
+      status: result.success ? 'done' : 'failed',
+    };
+  }
+
+  if (toolName === 'update_kb_entry') {
+    return {
+      type: 'kb_operation',
+      id,
+      operationType: 'update',
+      fileType: (resultData.file_type ?? 'characters') as KnowledgeFileType,
+      title: String(resultData.title ?? args.file_id ?? 'KB entry'),
+      contentPreview: String(
+        resultData.content_preview ?? args.content ?? result.error ?? ''
+      ).slice(0, 180),
+      status: result.success ? 'done' : 'failed',
+    };
+  }
+
+  return null;
 }

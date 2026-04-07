@@ -369,3 +369,32 @@ Automated heal pass identified 2 blockers that were documentation drift, not mis
 3. **BUILDING.md** -- This section documenting the heal pass.
 
 **Why this matters:** VISION and SPEC were 3 days behind BUILDING. A developer reading SPEC would think the KB is a flat entity graph and interviews don't exist. In reality, the hierarchical KB, AI tools, interview engine, pipeline stages, and Sam consciousness are all shipped code. The triad is now reconciled.
+
+### Activity Panel Features (2026-03-27)
+
+Three features to complete the activity panel experience for first users. Discovery: error handling, rate limiting, and KBOperationCard streaming were already fully implemented (centralized helpers in `lib/api/route.ts`, in-memory rate limiter in `lib/rate-limit.ts`, SSE pipeline for KB operations). Actual scope: extract inline god-component code from ActivityStream.tsx into focused components + add synthesis capture.
+
+**Feature 1: Interview Progress Component** (`components/InterviewProgress.tsx`)
+
+Extracted the inline interview progress block from ActivityStream (was lines 544-604) into a proper stepper component. Vertical checklist showing all interview question nodes with answered/pending status via filled/hollow circles. Progress bar. "Ask Next" card with teal accent prompts the next unanswered question. Collapsible "Deepen existing topics" section for revisit suggestions. InterviewEngine now wrapped in `useMemo` (was re-instantiated on every render, recomputing the entire question tree on each state change).
+
+**Feature 2: KB Version History Component** (`components/KBVersionHistory.tsx`)
+
+Extracted the inline KB version history block from ActivityStream (was lines 627-744) into a self-contained panel. Owns its own fetch lifecycle. Version list with semantic version badges (major=gold, minor=teal, patch=muted), change summaries, relative timestamps. Side-by-side content comparison (current vs selected version in scrollable columns). Restore with inline confirmation dialog (non-destructive -- creates new version from snapshot). Entry point added to WorldBuildingDashboard: "history" button on populated layer cards calls `onFileHistory` callback.
+
+**Feature 3: Session-End Summary Cards** (`components/SynthesisSummaryCard.tsx`)
+
+New component. Captures synthesis results that were previously fire-and-forget. Modified `useSession` hook to `.then()` the `/api/synthesize` response and push results into `synthesisResults` state array. Card is visually distinct from KBOperationCard: teal left border, slight blue-tinted background, "Session Synthesis" label. Shows summary text, collapsible sections for extracted entities (pills with type-coded colors), backlog items added, workspace files created. Dismiss button removes from ephemeral state (persisted data already in DB).
+
+**ActivityStream refactor:** Dropped from ~760 lines of inline logic to a clean orchestration component. Removed 6 state variables and the InterviewEngine instantiation. Now delegates to InterviewProgress, KBVersionHistory, and SynthesisSummaryCard. Props threaded through SessionView from useSession hook.
+
+### Architecture Decisions (Activity Panel Features)
+
+| Decision | Choice | Why |
+|----------|--------|-----|
+| Extract vs rewrite | Extract inline code into components | Existing logic was correct, just badly organized. Extraction preserves behavior while enabling memoization. |
+| useMemo for InterviewEngine | Keyed on [bookType, kbFiles] | Was re-created every render. Question tree computation is O(n) on kbFiles for inference. |
+| Synthesis capture vs Realtime | Direct .then() on fetch response | Simpler than Supabase Realtime listener. Response already contains full data (summary + entities + backlog + files). Zero additional latency. |
+| Content comparison | Side-by-side pre blocks | Character-level diff too complex for v1 and would require a diff library. Side-by-side is sufficient for version review. |
+| Restore confirmation | Inline confirm/cancel buttons | Modal would be overkill for a non-destructive operation (restore creates a new version, doesn't overwrite). |
+| History entry point | Button on WorldBuildingDashboard layer cards | Natural discovery -- users see their KB layers and can explore version history from where the data lives. |

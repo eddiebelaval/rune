@@ -68,6 +68,7 @@ async function handleCreateEntry(
         file_type: file.file_type,
         scope: file.scope,
         folder_type: file.folder_type,
+        content_preview: file.content.substring(0, 180),
         message: `Created "${file.title}" in ${file.folder_type}/${file.file_type}`,
       },
     }
@@ -100,7 +101,9 @@ async function handleUpdateEntry(
       data: {
         id: file.id,
         title: file.title,
+        file_type: file.file_type,
         mode,
+        content_preview: newContent.substring(0, 180),
         message: `Updated "${file.title}" (${mode})`,
       },
     }
