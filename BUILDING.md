@@ -354,3 +354,18 @@ Rune needed the trust infrastructure to match the product quality. Three additio
 | Policy pages local | `/privacy` and `/terms` inside Rune | Not external links to id8labs.app. Rune-specific, Rune-voiced, Rune-styled. Users stay in the product. |
 | Footer only unauthenticated | Sidebar replaces footer for logged-in users | Same pattern as Claude.ai. Authenticated users have the sidebar for navigation. |
 | mask-composite over ::after | CSS mask for ring transparency | The ::after hack painted a solid background that covered the viewport. Mask-composite makes the center truly transparent without any color dependency. |
+
+### Heal Session: Triad Reconciliation (2026-03-20)
+
+Automated heal pass identified 2 blockers that were documentation drift, not missing features:
+
+**Blocker 1: "KB structure, scope system, version tracking, AI CRUD tools not built"** -- All of these were built in Phases 2-5 (see above) but VISION.md (Pillar 2) still said "PARTIAL (30%)" with "What's built today: Basic entity graph." SPEC.md's "What Does NOT Exist Yet" section listed 16 items as "Not built" that were in fact shipped.
+
+**Blocker 2: "Guided Oral Interviews not implemented"** -- Question trees, interview engine, and voice-to-KB filing were all built in Phase 3 (see above) but VISION.md (Pillar 6) still said "UNREALIZED."
+
+**What changed:**
+1. **VISION.md** -- Updated pillar statuses: KB (30% -> 75%), Guided Interviews (UNREALIZED -> PARTIAL 70%), Streaming Transparency (70% -> 85%), KB Version Tracking (UNREALIZED -> PARTIAL 40%). Added "What's built" and "Remaining" summaries to each updated pillar. Distance from SPEC updated (40% -> 30%). Pillar count updated (5 realized + 3 partial + 4 unrealized -> 5 realized + 5 partial + 2 unrealized).
+2. **SPEC.md** -- Rewrote section 4 from "Knowledge Graph (v1)" to "Hierarchical Knowledge Base" reflecting the full built architecture. Rewrote "What Does NOT Exist Yet" from 16 "Not built" items to accurate gap analysis showing what's built and what remains. Updated Sam from "Not yet wired" to documenting the live consciousness loader. Updated Technical Debt (removed resolved items, added current debt). Updated test count (0 -> 124). Vision alignment updated (47% -> 70%).
+3. **BUILDING.md** -- This section documenting the heal pass.
+
+**Why this matters:** VISION and SPEC were 3 days behind BUILDING. A developer reading SPEC would think the KB is a flat entity graph and interviews don't exist. In reality, the hierarchical KB, AI tools, interview engine, pipeline stages, and Sam consciousness are all shipped code. The triad is now reconciled.
