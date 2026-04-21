@@ -1,6 +1,6 @@
 # Building Rune -- A Voice-First Conversational Book Writer
 
-Last updated: 2026-03-18
+Last updated: 2026-04-21
 
 ## What is the ID8 Pipeline?
 
@@ -398,3 +398,34 @@ New component. Captures synthesis results that were previously fire-and-forget. 
 | Content comparison | Side-by-side pre blocks | Character-level diff too complex for v1 and would require a diff library. Side-by-side is sufficient for version review. |
 | Restore confirmation | Inline confirm/cancel buttons | Modal would be overkill for a non-destructive operation (restore creates a new version, doesn't overwrite). |
 | History entry point | Button on WorldBuildingDashboard layer cards | Natural discovery -- users see their KB layers and can explore version history from where the data lives. |
+
+### Heal Session: KB Reconciliation + Streaming Transparency Polish (2026-04-21)
+
+Automated heal pass against the 2 open blockers for Rune.
+
+**Blocker 1: "The World-Building Knowledge Base is only partially shipped"** -- Audit showed the KB is ~85% shipped, not 75%. VISION.md Pillar 2 still listed the **KB version history UI** as "Remaining" even though `KBVersionHistory.tsx` (351 lines) has been in production since the activity panel extraction on 2026-03-27, with browse / side-by-side compare / non-destructive restore all wired through `/api/kb-history`. The real remaining work is provenance tracking, confidence scoring, and draft-sandbox pairing (`linked_sandbox_id` column exists but is unused). This is substantive new feature work -- documented, not implemented.
+
+**Blocker 2: "Streaming Transparency is only partially shipped"** -- The documented 5% gap was real: `/api/synthesize` was invoked as a fire-and-forget fetch every 3 exchanges from `useSession`, so for the ~5-15 seconds of synthesis the activity panel sat silent until the finished `SynthesisSummaryCard` dropped in. That silence is exactly what the Streaming Transparency pillar exists to prevent.
+
+**What changed:**
+
+1. **`useSession` hook** (`src/hooks/useSession.ts`) -- Added `isSynthesizing` state and a `synthesisInflightRef` counter so overlapping synthesis calls don't clear the flag early. Hook sets the flag before the fetch and clears it in `.finally()` once all in-flight calls have resolved. Exposed on the hook's return type.
+
+2. **`SessionView`** (`src/components/SessionView.tsx`) -- Destructures `isSynthesizing` from `useSession` and forwards it to `ActivityStream`.
+
+3. **`ActivityStream`** (`src/components/ActivityStream.tsx`) -- New `SynthesisInProgress` inline component (teal accent, pulsing dot, sliding progress bar, `role="status" aria-live="polite"`) rendered above the synthesis summary cards when `isSynthesizing` is true. Visually consistent with `SynthesisSummaryCard` so the transition from in-flight to result reads as the same card "filling in."
+
+4. **VISION.md** -- Pillar 2 bumped 75% -> 85%; "KB version history UI" removed from Remaining. Pillar 7 moved PARTIAL (95%) -> REALIZED. Distance from SPEC updated (25% -> 20%). Pillar counts updated (6 realized + 4 partial + 2 unrealized -> 7 realized + 3 partial + 2 unrealized). Evolution log entry added.
+
+5. **SPEC.md** -- World-Building KB remaining-gaps table rewritten to drop the "Version history UI" row (built) and clarify that each remaining item is unbuilt or partially wired. Streaming Transparency row in "What Does NOT Exist Yet" marked REALIZED with `SynthesisInProgress` called out. `SynthesisInProgress` added to the UI Components list. Header metadata updated (reconciled 2026-04-21, drift CURRENT, alignment 75% -> 80%).
+
+**Why this matters:** Documentation drift masqueraded as a product gap. The KB version history UI was a month old and still listed as "remaining" in VISION. Closing the synthesis-visibility hole is a small, concrete piece of polish that moves the Streaming Transparency pillar cleanly into REALIZED. The triad is reconciled.
+
+### Architecture Decisions (Heal Session)
+
+| Decision | Choice | Why |
+|----------|--------|-----|
+| Inline indicator vs dedicated component file | Inline `SynthesisInProgress` in ActivityStream | Scope is a single render location, ~80 lines of JSX + two keyframes. Extracting a file would be premature abstraction for a loading placeholder that is displaced as soon as the real card arrives. |
+| `synthesisInflightRef` counter vs boolean | Counter | Synthesis runs every 3 exchanges and can overlap if the user sends messages quickly. A boolean would flicker off too early when the first call resolved. Counter holds the flag until every in-flight call is done. |
+| `.finally()` vs try/finally around the chain | `.finally()` | The existing code is a promise chain, not async/await. `.finally()` keeps the change local and matches the surrounding style. |
+| `role="status" aria-live="polite"` | Accessibility for dynamic content | Screen readers announce the state change without interrupting. Matches the pattern we'd use for any streaming status. |
