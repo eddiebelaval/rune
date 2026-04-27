@@ -28,7 +28,7 @@ export default function SessionView({
   bookType,
   title,
 }: SessionViewProps) {
-  const { messages, kbOperations, synthesisResults, dismissSynthesis, sendMessage, isLoading } = useSession(bookId, sessionId);
+  const { messages, kbOperations, synthesisResults, isSynthesizing, dismissSynthesis, sendMessage, isLoading } = useSession(bookId, sessionId);
   const { rooms } = useWorkspace(bookId);
   const { items: backlogItems, nextItem } = useBacklog(bookId);
 
@@ -79,6 +79,7 @@ export default function SessionView({
           nextItem={nextItem}
           kbOperations={kbOperations}
           synthesisResults={synthesisResults}
+          isSynthesizing={isSynthesizing}
           onDismissSynthesis={dismissSynthesis}
           onQuickPrompt={sendMessage}
         />
