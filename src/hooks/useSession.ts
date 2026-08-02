@@ -37,6 +37,7 @@ interface UseSessionReturn {
   messages: ConversationMessage[];
   kbOperations: SessionKBOperation[];
   synthesisResults: SynthesisResult[];
+  isSynthesizing: boolean;
   dismissSynthesis: (id: string) => void;
   sendMessage: (text: string) => Promise<void>;
   isLoading: boolean;
@@ -81,9 +82,11 @@ export function useSession(bookId: string, sessionId: string): UseSessionReturn 
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [kbOperations, setKbOperations] = useState<SessionKBOperation[]>([]);
   const [synthesisResults, setSynthesisResults] = useState<SynthesisResult[]>([]);
+  const [isSynthesizing, setIsSynthesizing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const exchangeCountRef = useRef(0);
+  const synthesisInflightRef = useRef(0);
 
   const dismissSynthesis = useCallback((id: string) => {
     setSynthesisResults((prev) => prev.filter((r) => r.id !== id));
@@ -184,7 +187,11 @@ export function useSession(bookId: string, sessionId: string): UseSessionReturn 
 
         exchangeCountRef.current += 1;
         if (exchangeCountRef.current % 3 === 0 && accumulated.length > 0) {
-          // Synthesize — capture results for summary card
+          // Synthesize — capture results for summary card.
+          // Surface an in-flight indicator so the activity panel isn't silent
+          // during the 5-15s synthesis call (Streaming Transparency pillar).
+          synthesisInflightRef.current += 1;
+          setIsSynthesizing(true);
           fetch('/api/synthesize', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -209,6 +216,12 @@ export function useSession(bookId: string, sessionId: string): UseSessionReturn 
             })
             .catch((err) => {
               console.error('[useSession] Background synthesize failed:', err);
+            })
+            .finally(() => {
+              synthesisInflightRef.current = Math.max(0, synthesisInflightRef.current - 1);
+              if (synthesisInflightRef.current === 0) {
+                setIsSynthesizing(false);
+              }
             });
 
           // Extract — still fire-and-forget
@@ -239,6 +252,7 @@ export function useSession(bookId: string, sessionId: string): UseSessionReturn 
     messages,
     kbOperations,
     synthesisResults,
+    isSynthesizing,
     dismissSynthesis,
     sendMessage,
     isLoading,

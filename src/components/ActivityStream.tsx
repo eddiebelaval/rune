@@ -27,6 +27,7 @@ interface ActivityStreamProps {
   nextItem: BacklogItem | null;
   kbOperations: SessionKBOperation[];
   synthesisResults: SynthesisResult[];
+  isSynthesizing: boolean;
   onDismissSynthesis: (id: string) => void;
   onQuickPrompt: (message: string) => Promise<void>;
 }
@@ -85,6 +86,87 @@ function DownloadIcon() {
       <polyline points="7 10 12 15 17 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       <line x1="12" y1="15" x2="12" y2="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+/** In-flight indicator shown in the activity panel while `/api/synthesize`
+ *  is running. Gives the user a visible signal that Sam is working, matching
+ *  the Streaming Transparency pillar. Swapped out by the real
+ *  `SynthesisSummaryCard` once the fetch resolves. */
+function SynthesisInProgress() {
+  return (
+    <div
+      className="rounded-lg border overflow-hidden mb-3"
+      style={{
+        background: 'color-mix(in srgb, var(--rune-teal) 4%, var(--rune-surface))',
+        borderColor: 'var(--rune-border)',
+        borderLeftColor: 'var(--rune-teal)',
+        borderLeftWidth: '3px',
+      }}
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex items-center justify-between px-3 pt-3 pb-1">
+        <div className="flex items-center gap-2">
+          <span
+            className="text-[10px] uppercase tracking-wider"
+            style={{
+              color: 'var(--rune-teal)',
+              fontFamily: 'var(--font-mono, "IBM Plex Mono", monospace)',
+            }}
+          >
+            Synthesizing Session
+          </span>
+        </div>
+        <span
+          aria-hidden="true"
+          className="inline-block rounded-full"
+          style={{
+            width: 8,
+            height: 8,
+            background: 'var(--rune-teal)',
+            animation: 'rune-pulse 1.4s ease-in-out infinite',
+          }}
+        />
+      </div>
+      <div
+        className="px-3 py-2 text-xs leading-relaxed"
+        style={{
+          color: 'var(--rune-muted)',
+          fontFamily: 'var(--font-body, "Source Sans 3", sans-serif)',
+        }}
+      >
+        Sam is reviewing the last exchanges — summarizing, extracting entities, and updating the backlog.
+      </div>
+      <div className="px-3 pb-3">
+        <div
+          className="rounded-full overflow-hidden"
+          style={{
+            height: 2,
+            background: 'color-mix(in srgb, var(--rune-teal) 15%, transparent)',
+          }}
+        >
+          <div
+            style={{
+              height: '100%',
+              width: '40%',
+              background: 'var(--rune-teal)',
+              animation: 'rune-slide 1.6s ease-in-out infinite',
+            }}
+          />
+        </div>
+      </div>
+      <style jsx>{`
+        @keyframes rune-pulse {
+          0%, 100% { opacity: 0.35; transform: scale(0.85); }
+          50% { opacity: 1; transform: scale(1); }
+        }
+        @keyframes rune-slide {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(250%); }
+        }
+      `}</style>
+    </div>
   );
 }
 
@@ -410,6 +492,7 @@ export default function ActivityStream({
   nextItem,
   kbOperations,
   synthesisResults,
+  isSynthesizing,
   onDismissSynthesis,
   onQuickPrompt,
 }: ActivityStreamProps) {
@@ -479,6 +562,9 @@ export default function ActivityStream({
       <div className="flex-1 overflow-y-auto py-3">
         {activeTab === 'world' && (
           <div className="px-3">
+            {/* Synthesis in-progress indicator */}
+            {isSynthesizing && <SynthesisInProgress />}
+
             {/* Synthesis summary cards */}
             {synthesisResults.map((result) => (
               <div key={result.id} className="mb-3">

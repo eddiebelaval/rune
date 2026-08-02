@@ -1,9 +1,9 @@
 # SPEC.md -- Living Specification
 ## Rune
 
-> Last reconciled: 2026-03-27 | Build stage: Stage 9 (Launch Prep) IN PROGRESS | Version: 0.9.0
-> Drift status: CURRENT (activity panel features shipped)
-> VISION alignment: 75% (6 of 12 pillars realized, 4 partial, 2 unrealized)
+> Last reconciled: 2026-04-21 | Build stage: Stage 9 (Launch Prep) IN PROGRESS | Version: 0.9.0
+> Drift status: CURRENT (heal pass reconciled KB + streaming transparency pillars)
+> VISION alignment: 80% (7 of 12 pillars realized, 3 partial, 2 unrealized)
 
 ---
 
@@ -112,6 +112,7 @@ Subscription. API costs (Claude + Deepgram) absorbed as COGS, included in subscr
 - **InterviewProgress:** Vertical stepper checklist of interview questions (answered/pending), "Ask Next" card, collapsible revisit suggestions. Memoized InterviewEngine.
 - **KBVersionHistory:** Self-contained version history panel. Version list with semantic version badges, side-by-side content comparison, restore with confirmation. Entry via WorldBuildingDashboard layer cards.
 - **SynthesisSummaryCard:** Session synthesis results card (teal accent). Summary text, collapsible entity pills, backlog items, workspace files created. Dismissible.
+- **SynthesisInProgress:** In-flight teal card rendered in the ActivityStream "World" tab while `/api/synthesize` is running. Pulsing dot + sliding progress bar. Keeps the activity panel visible during background synthesis (Streaming Transparency).
 - **QualitySlider:** Three-position slider controlling model routing tier.
 - **SessionSidebar:** Collapsible session list on book workspace (left side, nested within AppSidebar shell).
 - **BookWorkspace:** Client component wiring session sidebar + session view.
@@ -191,16 +192,15 @@ RLS ownership cascade: all child tables filter through `book_id IN (SELECT id FR
 
 These are capabilities described in VISION.md that are not built or are only partially built:
 
-### World-Building Knowledge Base -- Remaining Gaps (Pillar 2, 75% complete)
+### World-Building Knowledge Base -- Remaining Gaps (Pillar 2, 85% complete)
 
-The hierarchical KB architecture is built. What's remaining:
+The hierarchical KB architecture is built, including the version history UI. What's remaining:
 
 | Feature | Status |
 |---------|--------|
-| **Version history UI** | Built. `KBVersionHistory` component: version list with semantic version badges, side-by-side content comparison, restore with confirmation. Entry via "history" button on WorldBuildingDashboard layer cards. |
-| **Provenance tracking** | No tracking of which KB version was active when each draft was written. |
-| **Confidence scoring** | No per-entry confidence score from AI extraction. |
-| **Draft-sandbox pairing** | `linked_sandbox_id` column exists but sandbox pairing logic is not wired. |
+| **Provenance tracking** | Not built. No tracking of which KB version was active when each draft was written. Requires a draft->KB version mapping table or per-version snapshot reference on workspace files. |
+| **Confidence scoring** | Not built. No per-entry confidence score from AI extraction. Requires extending the `knowledge_files` row or attribute payload to carry a 0-1 confidence and surfacing it in the dashboard. |
+| **Draft-sandbox pairing** | Partially built. `linked_sandbox_id` column exists on `knowledge_files` but the pairing write path (create a sandbox on draft open, associate revisions, surface diff) is not wired. |
 
 ### Three-Stage Pipeline -- Remaining Gaps (Built, needs deepening)
 
@@ -232,7 +232,7 @@ The hierarchical KB architecture is built. What's remaining:
 | Audio-Native Output (10) | No TTS, no audiobook generation. |
 | Illustration Intelligence (11) | No image generation, no concept art pipeline. |
 | KB Version Tracking (12) | Backend built. UI built (`KBVersionHistory`: browse, compare, restore). Missing: provenance tracking (which KB version was active per draft), confidence scoring. 65% complete. |
-| Streaming Transparency (7) | KBOperationCard streaming wired end-to-end. WorldBuildingDashboard in ActivityStream. Session-end summary cards built (`SynthesisSummaryCard`). Missing: progress indicators for long synthesis. 95% complete. |
+| Streaming Transparency (7) | REALIZED. KBOperationCard streaming wired end-to-end. WorldBuildingDashboard in ActivityStream. Session-end summary cards built (`SynthesisSummaryCard`). `SynthesisInProgress` in-flight indicator wired in `useSession` + ActivityStream so the activity panel is visible during the ~5-15s background synthesis call. |
 | Deployment | DEPLOYED. Vercel at `rune-two.vercel.app`, Supabase `rune-prod`. |
 | Billing | Subscription model decided. API costs absorbed as COGS. Stripe integration not yet built. First users (Alexis, Kobe, Emily) get free access. |
 | Tests | 124 tests across 7 test files (Vitest). Covers text-utils, folder-system, kb-versioning, interview-engine, pipeline stages/gates, KB context inference, KB tools schema. No E2E tests. |
